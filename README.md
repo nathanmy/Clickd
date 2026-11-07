@@ -1,6 +1,8 @@
 # Clikd
 
-Clikd is a Bluetooth-connected messaging device and companion mobile app that allows two people to communicate through personalized click sequences, LED patterns, and vibrations. The app manages device pairing, a shared message library, custom patterns, and communication between paired devices.
+Clikd is a Bluetooth-connected messaging device and companion mobile application that enables two people to communicate through personalized click sequences, LED patterns, and vibrations.
+
+The mobile app will support device pairing, a shared message library, customizable patterns, and communication between paired devices.
 
 ## Tech Stack
 
@@ -16,7 +18,7 @@ Clikd is a Bluetooth-connected messaging device and companion mobile app that al
 - Node.js 26 LTS
 - Git
 - VS Code
-- Expo Go (for mobile testing)
+- Expo Go (for initial mobile testing)
 
 ### Installation
 
@@ -43,12 +45,25 @@ Scan the QR code with Expo Go to run the app on your phone, or press `w` to prev
 
 **Windows PowerShell:** Use `npm.cmd` and `npx.cmd` if script execution is restricted.
 
+**Note:** Native Bluetooth functionality will require an Expo development build rather than Expo Go.
+
 ## Project Structure
 
 ```text
-src/
-├── app/           # Screens and navigation
-├── components/    # Reusable UI components
-├── constants/     # Theme and constants
-└── hooks/         # Reusable React hooks
+Clikd/
+├── src/
+│   ├── app/
+│   │   ├── _layout.tsx          # Root navigation
+│   │   └── (tabs)/
+│   │       ├── _layout.tsx      # Bottom tab navigation
+│   │       ├── index.tsx        # Home screen
+│   │       └── library.tsx      # Code Library screen
+│   ├── components/              # Reusable UI components
+│   └── constants/
+│       └── theme.ts            # Shared colors and spacing
+├── assets/                      # Images and icons
+├── app.json                     # Expo configuration
+├── package.json                 # Dependencies and scripts
+├── package-lock.json            # Locked dependency versions
+└── tsconfig.json                # TypeScript configuration
 ```
