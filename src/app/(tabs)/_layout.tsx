@@ -48,6 +48,40 @@ export default function TabLayout() {
           ),
         }}
       />
+
+      <Tabs.Screen
+        name="stats"
+        options={{
+          title: 'Stats',
+          tabBarIcon: ({ color, size }) => (
+            <Image
+              source={require('../../../assets/images/tabIcons/stats.png')}
+              style={{
+                width: size,
+                height: size,
+                tintColor: color,
+              }}
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ color, size }) => (
+            <Image
+              source={require('../../../assets/images/tabIcons/profile.png')}
+              style={{
+                width: size,
+                height: size,
+                tintColor: color,
+              }}
+            />
+          ),
+        }}
+      />
     </Tabs>
   );
 }
