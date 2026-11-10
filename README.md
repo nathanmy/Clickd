@@ -47,23 +47,46 @@ Scan the QR code with Expo Go to run the app on your phone, or press `w` to prev
 
 **Note:** Native Bluetooth functionality will require an Expo development build rather than Expo Go.
 
+## Verification
+
+Check the app's TypeScript:
+
+```bash
+npm run typecheck
+```
+
+Native layout, navigation lifecycle, and Bluetooth behavior still require device testing.
+
 ## Project Structure
 
 ```text
-Clikd/
-├── src/
-│   ├── app/
-│   │   ├── _layout.tsx          # Root navigation
-│   │   └── (tabs)/
-│   │       ├── _layout.tsx      # Bottom tab navigation
-│   │       ├── index.tsx        # Home screen
-│   │       └── library.tsx      # Code Library screen
-│   ├── components/              # Reusable UI components
-│   └── constants/
-│       └── theme.ts            # Shared colors and spacing
-├── assets/                      # Images and icons
-├── app.json                     # Expo configuration
-├── package.json                 # Dependencies and scripts
-├── package-lock.json            # Locked dependency versions
-└── tsconfig.json                # TypeScript configuration
+src/
+  app/                   Expo Router routes and navigation
+  constants/theme.ts     Application colors and spacing
+  features/
+    home/                Home screen, message rows, scroll behavior
+    keycap/              Sequence definitions, LED palette, visualization, playback
+  state/
+    app_data.tsx         React contexts, public actions, consumer hooks
+    types.ts             Application data contracts
+    model.ts             Startup validation, message ordering, state transitions
+    validation.ts        Validate and copy incoming data
+    defaults.ts          Empty startup and product codewords
+    demo_data.ts         Development-only example content
 ```
+
+Sequence definitions are independent of React. State stores data and validates updates;
+feature modules handle presentation and playback. Messages retain their own content
+and feedback settings so library changes cannot rewrite history. There is one
+linked partner, or none. Unlinking preserves the existing message history.
+
+## Development Data and Assets
+
+`src/app/_layout.tsx` enables demo data in development through `ENABLE_DEMO_DATA`.
+Set it to `false` to test a disconnected device with no partner or messages.
+Production builds always start with product defaults. State currently lives in
+memory; restarting the app resets it.
+
+The repository includes the keycap illustration and tab icons. Custom launcher
+icons, favicon, and splash artwork are not supplied; Expo defaults are used until
+real assets are added to `app.json`.

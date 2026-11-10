@@ -1,16 +1,8 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-import {
-  createPlaybackFrames,
-  idleFrame,
-  type LedFrame,
-  type ReplayableCode,
-} from './lighting';
+import type { ReplayableCode } from '@/features/keycap/sequence';
+
+import { createPlaybackFrames, idleFrame, schedulePlayback, type LedFrame } from './lighting';
 
 export function useReplay() {
   const [frame, setFrame] = useState<LedFrame>(idleFrame);
@@ -18,39 +10,24 @@ export function useReplay() {
   const [playingId, setPlayingId] =
     useState<string | number | null>(null);
 
-  const currentId =
-    useRef<string | number | null>(null);
+  const currentId = useRef<string | number | null>(null);
 
-  const timers =
-    useRef<ReturnType<typeof setTimeout>[]>([]);
+  const cancelPlayback = useRef<(() => void) | null>(null);
 
-  const generation = useRef(0);
-
-  // Cancel pending playback timers.
-  const clearTimers = useCallback(() => {
-    timers.current.forEach(clearTimeout);
-    timers.current = [];
-  }, []);
-
-  // Clean up when component unmounts.
-  useEffect(
-    () => () => clearTimers(),
-    [clearTimers]
-  );
+  useEffect(() => () => cancelPlayback.current?.(), []);
 
   const stop = useCallback(() => {
-    generation.current++;
-    clearTimers();
+    cancelPlayback.current?.();
+    cancelPlayback.current = null;
 
     currentId.current = null;
     setPlayingId(null);
     setFrame(idleFrame());
-  }, [clearTimers]);
+  }, []);
 
   const replay = useCallback(
     (sequence: ReplayableCode) => {
-      const alreadyPlaying =
-        currentId.current === sequence.id;
+      const alreadyPlaying = currentId.current === sequence.id;
 
       stop();
 
@@ -62,33 +39,10 @@ export function useReplay() {
 
       if (!frames.length) return;
 
-      const token = generation.current;
-
       currentId.current = sequence.id;
       setPlayingId(sequence.id);
 
-      // Apply first LED frame immediately.
-      setFrame(frames[0]);
-
-      // Schedule remaining frames.
-      frames.slice(1).forEach(next => {
-        timers.current.push(
-          setTimeout(() => {
-            if (generation.current === token) {
-              setFrame(next);
-            }
-          }, next.at)
-        );
-      });
-
-      // Return to idle at the end of playback.
-      timers.current.push(
-        setTimeout(() => {
-          if (generation.current === token) {
-            stop();
-          }
-        }, duration + 20)
-      );
+      cancelPlayback.current = schedulePlayback(frames, duration, setFrame, stop);
     },
     [stop]
   );

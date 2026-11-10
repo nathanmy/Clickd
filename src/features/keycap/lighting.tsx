@@ -1,22 +1,11 @@
 import { DEFAULT_THEME } from '@/constants/theme';
 
-export type LightingPattern = 'solid' | 'circular' | 'wave';
+import { isPressSequence, type PlaybackSequence } from '@/features/keycap/sequence';
 
-export type LightingSequence = {
-  code: string;
-  pattern: LightingPattern;
-  primaryColor: string;
-  secondaryColor?: string;
-};
-
-export type ReplayableCode = LightingSequence & {
-  id: string | number;
-};
-
-export type LedFrame = {
-  active: number[];
-  colors: string[];
-};
+export type LedFrame = Readonly<{
+  active: readonly number[];
+  colors: readonly string[];
+}>;
 
 export type TimedFrame = LedFrame & {
   at: number;
@@ -68,7 +57,7 @@ export function idleFrame(): LedFrame {
 }
 
 export function createPlaybackFrames(
-  sequence: LightingSequence
+  sequence: PlaybackSequence
 ): {
   frames: TimedFrame[];
   duration: number;
@@ -79,11 +68,16 @@ export function createPlaybackFrames(
     char => char === '•' || char === '—'
   );
 
+  // Fall back as a whole if measured timing is incomplete or malformed.
+  const measured = sequence.presses;
+  const useMeasuredTiming = isPressSequence(measured, presses.length);
+
   let elapsed = 0;
 
   presses.forEach((symbol, index) => {
-    const duration =
-      symbol === '•' ? DOT_MS : DASH_MS;
+    const timing = useMeasuredTiming ? measured[index] : undefined;
+    const duration = timing?.durationMs ?? (symbol === '•' ? DOT_MS : DASH_MS);
+    elapsed = timing?.offsetMs ?? elapsed;
 
     if (sequence.pattern === 'solid') {
       // All LEDs are lit simultaneously.
@@ -103,8 +97,7 @@ export function createPlaybackFrames(
           ? CIRCULAR_GROUPS
           : WAVE_GROUPS;
 
-      const stepMs =
-        sequence.pattern === 'circular' ? 90 : 110;
+      const stepMs = sequence.pattern === 'circular' ? 90 : 110;
 
       for (
         let t = 0, step = 0;
@@ -139,4 +132,43 @@ export function createPlaybackFrames(
   });
 
   return { frames, duration: elapsed };
+}
+
+/** Schedule one frame at a time and catch up if the JS thread runs late. */
+export function schedulePlayback(
+  frames: readonly TimedFrame[],
+  duration: number,
+  onFrame: (frame: LedFrame) => void,
+  onComplete: () => void,
+): () => void {
+  const startedAt = performance.now();
+  let index = 0;
+  let cancelled = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  function advance() {
+    if (cancelled) return;
+    const elapsed = performance.now() - startedAt;
+    let latest: TimedFrame | undefined;
+
+    while (index < frames.length && frames[index].at <= elapsed) {
+      latest = frames[index++];
+    }
+    if (latest) onFrame(latest);
+
+    // Preserve the existing short pause before clearing the playing indicator.
+    const nextAt = index < frames.length ? frames[index].at : duration + 20;
+    if (elapsed >= duration + 20) {
+      onComplete();
+    } else {
+      timer = setTimeout(advance, Math.max(0, nextAt - (performance.now() - startedAt)));
+    }
+  }
+
+  advance();
+
+  return () => {
+    cancelled = true;
+    clearTimeout(timer);
+  };
 }

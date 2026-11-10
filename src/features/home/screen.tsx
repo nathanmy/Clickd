@@ -1,46 +1,140 @@
-import { useEffect, useRef } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Animated,
+  AppState,
   FlatList,
+  Pressable,
   StyleSheet,
   Text,
   View,
+  type ListRenderItemInfo,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { DEFAULT_THEME as theme } from '@/constants/theme';
 import { Keycap } from '@/features/keycap/keycap';
 import { useReplay } from '@/features/keycap/replay';
+import { useAppData, useDeviceData } from '@/state/app_data';
+import type { Message } from '@/state/types';
 
 import { MessageRow } from './message';
-import { device, messages } from './mock_data';
+import { useMessageScroll } from './use_message_scroll';
+
+const messageKey = (message: Message) => message.id;
 
 export function HomeScreen() {
-  const { frame, playingId, replay } = useReplay();
-  const heartOpacity = useRef(new Animated.Value(0.65)).current;
+  const {
+    messages,
+    profiles,
+    currentUserId,
+    partnerId,
+    activeConversationId,
+  } = useAppData();
 
-  // Animate connection heart.
-  useEffect(() => {
-    if (!device.partnerLinked) return;
+  const device = useDeviceData();
 
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(heartOpacity, {
-          toValue: 1,
-          duration: 950,
-          useNativeDriver: true,
-        }),
-        Animated.timing(heartOpacity, {
-          toValue: 0.55,
-          duration: 950,
-          useNativeDriver: true,
-        }),
-      ])
-    );
+  const { frame, playingId, replay, stop } = useReplay();
 
-    pulse.start();
-    return () => pulse.stop();
-  }, [heartOpacity]);
+  const [heartOpacity] = useState(() => new Animated.Value(0.65));
+
+  // Preserve chronological order:
+  // oldest messages at the top, newest messages below.
+  const conversationMessages = useMemo(
+    () => messages.filter((message) => message.conversationId === activeConversationId),
+    [activeConversationId, messages],
+  );
+
+  const { list, newMessageCount, showLatest, onContentSizeChange, onScroll } =
+    useMessageScroll(conversationMessages, activeConversationId, currentUserId);
+
+  const newMessageLabel = `${newMessageCount} new ${newMessageCount === 1 ? 'message' : 'messages'}`;
+
+  const partnerLinked = partnerId !== null;
+
+  const connected = device.connectionStatus === 'connected';
+
+  const batteryLabel =
+    device.battery === null
+      ? '—'
+      : `${Math.round(device.battery)}%`;
+
+  useFocusEffect(
+    useCallback(() => {
+      heartOpacity.setValue(0.65);
+
+      const pulse = partnerLinked
+        ? Animated.loop(
+            Animated.sequence([
+              Animated.timing(heartOpacity, {
+                toValue: 1,
+                duration: 950,
+                useNativeDriver: true,
+              }),
+              Animated.timing(heartOpacity, {
+                toValue: 0.55,
+                duration: 950,
+                useNativeDriver: true,
+              }),
+            ]),
+          )
+        : null;
+
+      if (AppState.currentState === 'active') {
+        pulse?.start();
+      }
+
+      const subscription = AppState.addEventListener(
+        'change',
+        (status) => {
+          if (status === 'active') {
+            pulse?.start();
+          } else {
+            pulse?.stop();
+            stop();
+          }
+        },
+      );
+
+      // Also reset playback when the linked partner or conversation changes.
+      return () => {
+        subscription.remove();
+        pulse?.stop();
+        stop();
+      };
+    }, [
+      activeConversationId,
+      partnerId,
+      heartOpacity,
+      partnerLinked,
+      stop,
+    ]),
+  );
+
+  const renderMessage = useCallback(
+    ({ item }: ListRenderItemInfo<Message>) => (
+      <MessageRow
+        message={item}
+        profile={
+          Object.prototype.hasOwnProperty.call(
+            profiles,
+            item.senderId,
+          )
+            ? profiles[item.senderId]
+            : undefined
+        }
+        sent={item.senderId === currentUserId}
+        playing={playingId === item.id}
+        onReplay={replay}
+      />
+    ),
+    [
+      currentUserId,
+      playingId,
+      profiles,
+      replay,
+    ],
+  );
 
   return (
     <SafeAreaView
@@ -51,61 +145,66 @@ export function HomeScreen() {
         <View style={styles.header}>
           <Text style={styles.title}>Home</Text>
 
-          <View style={styles.battery}>
+          <View
+            accessible
+            accessibilityLabel={
+              device.battery === null
+                ? 'Device battery unavailable'
+                : `Device battery ${batteryLabel}`
+            }
+            style={styles.battery}
+          >
             <View style={styles.batteryShell}>
               <View
                 style={[
                   styles.batteryLevel,
                   {
-                    width: (22 * device.battery) / 100,
+                    width:
+                      (22 * (device.battery ?? 0)) / 100,
                   },
                 ]}
               />
             </View>
 
             <Text style={styles.batteryText}>
-              {device.battery}%
+              {batteryLabel}
             </Text>
           </View>
         </View>
 
-        {/* Connected keycaps */}
         <View style={styles.devices}>
           <View style={styles.connectionLine} />
 
           <Keycap
             frame={frame}
             playing={playingId !== null}
-            faded={!device.connected}
+            faded={!connected}
           />
 
           <Animated.View
-            style={[
-              styles.heartCircle,
-              { opacity: heartOpacity },
-            ]}
+            style={[styles.heartCircle, { opacity: heartOpacity }]}
           >
             <Text style={styles.heart}>♡</Text>
           </Animated.View>
 
-          <Keycap faded={!device.partnerLinked} />
+          <Keycap faded={!partnerLinked} />
         </View>
 
-        {/* Connection status */}
         <View style={styles.statusRow}>
           <View style={styles.statusPill}>
             <View
               style={[
                 styles.statusDot,
                 {
-                  backgroundColor: device.partnerLinked
+                  backgroundColor: partnerLinked
                     ? '#22C55E'
                     : '#9CA3AF',
                 },
               ]}
             />
+
             <Text style={styles.statusLabel}>
-              {device.partnerLinked
+              {partnerLinked
                 ? 'Linked to partner'
                 : 'Not linked'}
             </Text>
@@ -113,24 +212,44 @@ export function HomeScreen() {
         </View>
       </View>
 
-      {/* Messages */}
       <View style={styles.messagesSection}>
-        <Text style={styles.sectionTitle}>Messages</Text>
+        <Text style={styles.sectionTitle}>
+          Messages
+        </Text>
 
-        <FlatList
-          data={messages}
-          keyExtractor={(message) => String(message.id)}
-          renderItem={({ item }) => (
-            <MessageRow
-              message={item}
-              playing={playingId === item.id}
-              onReplay={replay}
-            />
-          )}
-          extraData={playingId}
-          contentContainerStyle={styles.messageList}
-          showsVerticalScrollIndicator={false}
-        />
+        {conversationMessages.length === 0 ? (
+          <Text style={styles.emptyText}>
+            Your messages will appear here.
+          </Text>
+        ) : (
+          <FlatList
+            key={activeConversationId}
+            testID="message-list"
+            ref={list}
+            data={conversationMessages}
+            keyExtractor={messageKey}
+            renderItem={renderMessage}
+            extraData={playingId}
+            onScroll={onScroll}
+            onContentSizeChange={onContentSizeChange}
+            scrollEventThrottle={16}
+            contentContainerStyle={styles.messageList}
+            showsVerticalScrollIndicator={false}
+          />
+        )}
+
+        {newMessageCount > 0 && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Show ${newMessageLabel}`}
+            onPress={() => showLatest(true)}
+            style={styles.newMessages}
+          >
+            <Text style={styles.newMessagesText}>
+              {newMessageLabel} ↓
+            </Text>
+          </Pressable>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -261,6 +380,28 @@ const styles = StyleSheet.create({
 
   messageList: {
     gap: 11,
-    paddingBottom: 28,
+    paddingVertical: 16,
+  },
+
+  emptyText: {
+    fontSize: 16,
+    color: theme.textSecondary,
+    paddingVertical: 16,
+  },
+
+  newMessages: {
+    position: 'absolute',
+    bottom: 12,
+    alignSelf: 'center',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: theme.connectionBackground,
+  },
+
+  newMessagesText: {
+    color: theme.text,
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

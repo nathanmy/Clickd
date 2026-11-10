@@ -1,87 +1,40 @@
-import { Colors } from '@/constants/theme';
+import { DEFAULT_THEME as theme } from '@/constants/theme';
 import { Tabs } from 'expo-router';
 import { Image } from 'react-native';
+
+// Static require paths let Metro bundle each platform's image variants.
+const TAB_SCREENS = [
+  { name: 'index', title: 'Home', icon: require('../../../assets/images/tabIcons/home.png') },
+  { name: 'library', title: 'Code Library', icon: require('../../../assets/images/tabIcons/library.png') },
+  { name: 'stats', title: 'Stats', icon: require('../../../assets/images/tabIcons/stats.png') },
+  { name: 'profile', title: 'Profile', icon: require('../../../assets/images/tabIcons/profile.png') },
+] as const;
 
 export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: Colors.text,
-        tabBarInactiveTintColor: Colors.textSecondary,
+        tabBarActiveTintColor: theme.text,
+        tabBarInactiveTintColor: theme.textSecondary,
         tabBarStyle: {
-          backgroundColor: Colors.background,
-          borderTopColor: Colors.border,
+          backgroundColor: theme.background,
+          borderTopColor: theme.border,
         },
       }}
     >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color, size }) => (
-            <Image
-              source={require('../../../assets/images/tabIcons/home.png')}
-              style={{
-                width: size,
-                height: size,
-                tintColor: color,
-              }}
-            />
-          ),
-        }}
-      />
-
-      <Tabs.Screen
-        name="library"
-        options={{
-          title: 'Code Library',
-          tabBarIcon: ({ color, size }) => (
-            <Image
-              source={require('../../../assets/images/tabIcons/library.png')}
-              style={{
-                width: size,
-                height: size,
-                tintColor: color,
-              }}
-            />
-          ),
-        }}
-      />
-
-      <Tabs.Screen
-        name="stats"
-        options={{
-          title: 'Stats',
-          tabBarIcon: ({ color, size }) => (
-            <Image
-              source={require('../../../assets/images/tabIcons/stats.png')}
-              style={{
-                width: size,
-                height: size,
-                tintColor: color,
-              }}
-            />
-          ),
-        }}
-      />
-
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color, size }) => (
-            <Image
-              source={require('../../../assets/images/tabIcons/profile.png')}
-              style={{
-                width: size,
-                height: size,
-                tintColor: color,
-              }}
-            />
-          ),
-        }}
-      />
+      {TAB_SCREENS.map(({ name, title, icon }) => (
+        <Tabs.Screen
+          key={name}
+          name={name}
+          options={{
+            title,
+            tabBarIcon: ({ color, size }) => (
+              <Image source={icon} style={{ width: size, height: size, tintColor: color }} />
+            ),
+          }}
+        />
+      ))}
     </Tabs>
   );
 }

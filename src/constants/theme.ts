@@ -1,10 +1,3 @@
-export const Colors = {
-  background: '#FFFFFF',
-  text: '#111827',
-  textSecondary: '#6B7280',
-  border: '#E5E7EB',
-} as const;
-
 export const Spacing = {
   small: 8,
   medium: 16,
@@ -39,7 +32,3 @@ export const ClassicTheme = {
 } as const;
 
 export const DEFAULT_THEME = ClassicTheme;
-
-// Temporary compatibility with older screens.
-/** @deprecated Use DEFAULT_THEME or ClassicTheme. */
-export const GraphiteTheme = ClassicTheme;

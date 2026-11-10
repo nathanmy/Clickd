@@ -1,35 +1,40 @@
-
 import { memo } from 'react';
-import {
-  Image,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 
 import { DEFAULT_THEME as theme } from '@/constants/theme';
-import { profiles, type Message } from './mock_data';
+import type { Message, Profile } from '@/state/types';
 
 type Props = {
   message: Message;
+  profile: Profile | undefined;
+  sent: boolean;
   playing: boolean;
   onReplay: (message: Message) => void;
 };
 
-// Default profile picture when no photo is available.
+const timeFormatter = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+});
+
+function formatTime(createdAt: string): string {
+  const timestamp = Date.parse(createdAt);
+
+  return Number.isFinite(timestamp)
+    ? timeFormatter.format(timestamp)
+    : 'Unknown time';
+}
+
 function DefaultAvatar({ sent }: { sent: boolean }) {
   const color = sent ? '#FFFFFF' : theme.avatarText;
 
   return (
     <Svg width={22} height={22} viewBox="0 0 24 24">
-      <Circle
-        cx={12}
-        cy={8}
-        r={4}
-        fill={color}
-      />
+      <Circle cx={12} cy={8} r={4} fill={color} />
+
       <Path
         d="M4.5 21c0-4.3 3.2-7 7.5-7s7.5 2.7 7.5 7"
         fill={color}
@@ -40,21 +45,21 @@ function DefaultAvatar({ sent }: { sent: boolean }) {
 
 export const MessageRow = memo(function MessageRow({
   message,
+  profile,
+  sent,
   playing,
   onReplay,
 }: Props) {
-  const sent = message.direction === 'sent';
-  const profile = sent ? profiles.you : profiles.partner;
-
   const avatar = (
     <View
-      accessibilityLabel={`${profile.name} profile picture`}
-      style={[
-        styles.avatar,
-        sent && styles.sentAvatar,
-      ]}
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={
+        `${profile?.name ?? 'Unknown sender'} profile picture`
+      }
+      style={[styles.avatar, sent && styles.sentAvatar]}
     >
-      {profile.photoUrl ? (
+      {profile?.photoUrl ? (
         <Image
           source={{ uri: profile.photoUrl }}
           style={styles.avatarImage}
@@ -67,10 +72,7 @@ export const MessageRow = memo(function MessageRow({
 
   return (
     <View
-      style={[
-        styles.row,
-        sent && styles.sentRow,
-      ]}
+      style={[styles.row, sent && styles.sentRow]}
     >
       {!sent && avatar}
 
@@ -78,24 +80,20 @@ export const MessageRow = memo(function MessageRow({
         <View
           style={[
             styles.bubble,
-            sent ? styles.sentBubble : styles.receivedBubble,
+            sent
+              ? styles.sentBubble
+              : styles.receivedBubble,
           ]}
         >
           <View style={styles.messageText}>
             <Text
-              style={[
-                styles.code,
-                sent && styles.white,
-              ]}
+              style={[styles.code, sent && styles.white]}
             >
               {message.code}
             </Text>
 
             <Text
-              style={[
-                styles.meaning,
-                sent && styles.white,
-              ]}
+              style={[styles.meaning, sent && styles.white]}
             >
               {message.meaning}
             </Text>
@@ -104,6 +102,7 @@ export const MessageRow = memo(function MessageRow({
           {!sent && (
             <Pressable
               accessibilityRole="button"
+              accessibilityState={{ selected: playing }}
               accessibilityLabel={
                 `${playing ? 'Stop' : 'Replay'} ${message.meaning}`
               }
@@ -116,10 +115,7 @@ export const MessageRow = memo(function MessageRow({
               ]}
             >
               {playing ? (
-                <View style={styles.pause}>
-                  <View style={styles.pauseBar} />
-                  <View style={styles.pauseBar} />
-                </View>
+                <View style={styles.stopSquare} />
               ) : (
                 <View style={styles.playTriangle} />
               )}
@@ -128,12 +124,9 @@ export const MessageRow = memo(function MessageRow({
         </View>
 
         <Text
-          style={[
-            styles.timestamp,
-            sent && styles.right,
-          ]}
+          style={[styles.timestamp, sent && styles.right]}
         >
-          {message.time}
+          {formatTime(message.createdAt)}
         </Text>
       </View>
 
@@ -261,14 +254,9 @@ const styles = StyleSheet.create({
     borderLeftColor: '#FFFFFF',
   },
 
-  pause: {
-    flexDirection: 'row',
-    gap: 4,
-  },
-
-  pauseBar: {
-    width: 4,
-    height: 14,
+  stopSquare: {
+    width: 12,
+    height: 12,
     borderRadius: 2,
     backgroundColor: '#FFFFFF',
   },
