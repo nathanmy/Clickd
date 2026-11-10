@@ -1,18 +1,24 @@
-import { createContext, useContext, useMemo, useReducer, type PropsWithChildren } from 'react';
+import { createContext, useCallback, useContext, useMemo, useReducer, useRef, type PropsWithChildren } from 'react';
 
-import { initialize, reducer } from './model';
-import { copyMessage, copyProfile, isBattery, isId, isStatus, messageError, profileError } from './validation';
+import { initialize, reducer, reduceLibrarySettings, type LibraryAction } from './model';
+import { saveLibrarySettings } from './storage';
+import { codewordSaveError, copyMessage, copyProfile, isBattery, isId, isStatus, isText, messageError, profileError } from './validation';
 import type {
   ActionResult,
   AppDataState,
+  Codeword,
   ConnectionStatus,
   DeviceState,
   Message,
+  LibrarySettings,
   Profile,
   SharedAppData,
 } from './types';
 
 type AppActions = Readonly<{
+  deleteCodeword: (libraryId: string, codewordId: string) => Promise<ActionResult>;
+  setActiveLibrary: (libraryId: string) => Promise<ActionResult>;
+  saveCodeword: (libraryId: string, input: Omit<Codeword, 'id'>, codewordId?: string) => Promise<ActionResult>;
   addMessage: (message: Message) => ActionResult;
 
   /** Upsert metadata; a message can arrive before its sender's profile. */
@@ -29,6 +35,7 @@ const DeviceContext = createContext<DeviceState | null>(null);
 const ActionsContext = createContext<AppActions | null>(null);
 
 const OK: ActionResult = Object.freeze({ ok: true });
+let codewordCounter = 0;
 
 const fail = (error: string): ActionResult => ({ ok: false, error });
 
@@ -40,9 +47,73 @@ type Props = PropsWithChildren<{
 export function AppDataProvider({ children, initialState }: Props) {
   const [state, dispatch] = useReducer(reducer, initialState, initialize);
   const currentUserId = state.data.currentUserId;
+  const savedSettings = useRef<LibrarySettings>({
+    libraries: state.data.libraries,
+    activeLibraryId: state.data.activeLibraryId,
+  });
+  const writeQueue = useRef(Promise.resolve());
+
+  // Serialize library edits and selections; publish them only after storage succeeds.
+  const commitLibraryChange = useCallback((createAction: (settings: LibrarySettings) => LibraryAction | ActionResult) => {
+    const operation = writeQueue.current.then<ActionResult>(async () => {
+      const action = createAction(savedSettings.current);
+      if ('ok' in action) return action;
+      const next = reduceLibrarySettings(savedSettings.current, action);
+      if (next === savedSettings.current) return OK;
+      try {
+        await saveLibrarySettings(next);
+      } catch {
+        return fail('Could not save your library on this device. Please try again.');
+      }
+      savedSettings.current = next;
+      dispatch(action);
+      return OK;
+    });
+    writeQueue.current = operation.then(() => undefined, () => undefined);
+    return operation;
+  }, []);
 
   const actions = useMemo<AppActions>(
     () => ({
+      deleteCodeword(libraryId, codewordId) {
+        return commitLibraryChange(({ libraries }) => {
+          if (libraryId !== 'clikd-codes') return fail('Only Clikd codewords can be deleted.');
+          const library = libraries[libraryId];
+          if (!library?.codewords.some((word) => word.id === codewordId)) {
+            return fail('This codeword is no longer available.');
+          }
+          return { type: 'codeword/delete', libraryId, codewordId };
+        });
+      },
+      setActiveLibrary(libraryId) {
+        return commitLibraryChange(({ libraries }) => {
+          if (!Object.prototype.hasOwnProperty.call(libraries, libraryId)) {
+            return fail('This library is no longer available.');
+          }
+          return { type: 'library/select', libraryId };
+        });
+      },
+      saveCodeword(libraryId, input, codewordId) {
+        // Capture the draft before awaiting the queued write.
+        const draft = { ...input, ...(input.vibration ? { vibration: { ...input.vibration } } : {}) };
+        return commitLibraryChange(({ libraries }) => {
+          const library = Object.prototype.hasOwnProperty.call(libraries, libraryId)
+            ? libraries[libraryId] : undefined;
+          if (!library) return fail('This library is no longer available.');
+          if (!draft.code) return fail('Add at least one short or long click.');
+          if (!isText(draft.meaning)) return fail('Enter a meaning for this codeword.');
+          const existing = library.codewords.find((word) => word.id === codewordId);
+          if (codewordId !== undefined && !existing) return fail('This codeword is no longer available.');
+          const word: Codeword = {
+            ...draft,
+            id: existing?.id ?? `custom-${Date.now()}-${++codewordCounter}`,
+            meaning: draft.meaning.trim(),
+          };
+          const error = codewordSaveError(library, word, codewordId === undefined);
+          if (error) return fail(error);
+          return { type: 'codeword/save', libraryId, word, creating: codewordId === undefined };
+        });
+      },
       addMessage(message) {
         const error = messageError(message);
         if (error) return fail(error);
@@ -116,7 +187,7 @@ export function AppDataProvider({ children, initialState }: Props) {
         return OK;
       },
     }),
-    [currentUserId, dispatch],
+    [currentUserId, dispatch, commitLibraryChange],
   );
 
   return (

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { ReplayableCode } from '@/features/keycap/sequence';
+import type { ReplayableCode } from '@/features/keycap/codes';
 
 import { createPlaybackFrames, idleFrame, schedulePlayback, type LedFrame } from './lighting';
 

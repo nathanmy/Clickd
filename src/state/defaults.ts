@@ -1,4 +1,4 @@
-import { LED_COLORS } from '@/features/keycap/sequence';
+import { LED_COLORS, MORSE_CODE } from '@/features/keycap/codes';
 import type { AppDataState, CodeLibrary, Profile } from './types';
 
 /** Fresh objects each time; these are product defaults, not demo content. */
@@ -45,13 +45,26 @@ export function createDefaultState(): AppDataState {
     ],
   };
 
+  const morse: CodeLibrary = {
+    id: 'morse-code',
+    name: 'Morse Code',
+    revision: 1,
+    codewords: MORSE_CODE.map(([character, code]) => ({
+      id: character,
+      code,
+      meaning: character,
+      pattern: 'solid',
+      primaryColor: LED_COLORS.blue,
+    })),
+  };
+
   return {
     data: {
       currentUserId: you.id,
       profiles: { [you.id]: you },
       partnerId: null,
       activeConversationId: null,
-      libraries: { [library.id]: library },
+      libraries: { [library.id]: library, [morse.id]: morse },
       activeLibraryId: library.id,
       preferences: { themeId: 'classic' },
       messages: [],

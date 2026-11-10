@@ -1,9 +1,9 @@
 import { createDefaultState } from './defaults';
 import {
-  contentError, copyMessage, copyProfile, isBattery, isId, isStatus,
+  contentError, codewordSaveError, copyMessage, copyProfile, isBattery, isId, isStatus,
   isText, messageError, profileError,
 } from './validation';
-import type { AppDataState, CodeLibrary, ConnectionStatus, Message, Profile } from './types';
+import type { AppDataState, CodeLibrary, Codeword, ConnectionStatus, LibrarySettings, Message, Profile } from './types';
 
 function compareMessages(left: Message, right: Message): number {
   const difference = Date.parse(left.createdAt) - Date.parse(right.createdAt);
@@ -149,7 +149,12 @@ export function initialize(seed?: AppDataState): AppDataState {
   };
 }
 
-export type Action =
+export type LibraryAction =
+  | { type: 'library/select'; libraryId: string }
+  | { type: 'codeword/delete'; libraryId: string; codewordId: string }
+  | { type: 'codeword/save'; libraryId: string; word: Codeword; creating: boolean };
+
+export type Action = LibraryAction
   | { type: 'message/add'; message: Message }
   | { type: 'profile/update'; profile: Profile }
   | { type: 'partner/link'; profile: Profile; conversationId: string }
@@ -157,11 +162,46 @@ export type Action =
   | { type: 'device/connection'; status: ConnectionStatus }
   | { type: 'device/battery'; battery: number | null };
 
+/** Shared by durable writes and the React reducer. */
+export function reduceLibrarySettings(data: LibrarySettings, action: LibraryAction): LibrarySettings {
+  if (action.type === 'library/select') {
+    if (data.activeLibraryId === action.libraryId ||
+      !Object.prototype.hasOwnProperty.call(data.libraries, action.libraryId)) return data;
+    return { libraries: data.libraries, activeLibraryId: action.libraryId };
+  }
+
+  const library = data.libraries[action.libraryId];
+  let codewords: readonly Codeword[];
+  if (action.type === 'codeword/delete') {
+    if (action.libraryId !== 'clikd-codes' || !library ||
+      !library.codewords.some((word) => word.id === action.codewordId)) return data;
+    codewords = library.codewords.filter((word) => word.id !== action.codewordId);
+  } else {
+    if (codewordSaveError(library, action.word, action.creating)) return data;
+    codewords = action.creating
+      ? [...library.codewords, action.word]
+      : library.codewords.map((word) => word.id === action.word.id ? action.word : word);
+  }
+  return {
+    activeLibraryId: data.activeLibraryId,
+    libraries: {
+      ...data.libraries,
+      [library.id]: { ...library, revision: library.revision + 1, codewords },
+    },
+  };
+}
+
 /** Pure transitions: no IO, clocks, random IDs, or mutation. */
 export function reducer(state: AppDataState, action: Action): AppDataState {
   const { data } = state;
 
   switch (action.type) {
+    case 'library/select':
+    case 'codeword/delete':
+    case 'codeword/save': {
+      const settings = reduceLibrarySettings(data, action);
+      return settings === data ? state : { ...state, data: { ...data, ...settings } };
+    }
     case 'message/add': {
       const messages = insertMessage(data.messages, action.message);
       if (messages === data.messages) return state;

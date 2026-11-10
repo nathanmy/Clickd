@@ -1,5 +1,5 @@
-import type { LightingSequence, PressTiming } from '@/features/keycap/sequence';
-export type { PressTiming } from '@/features/keycap/sequence';
+import type { LightingSequence, PressTiming } from '@/features/keycap/codes';
+export type { PressTiming } from '@/features/keycap/codes';
 
 export type Profile = Readonly<{
   id: string;
@@ -31,6 +31,8 @@ export type CodeLibrary = Readonly<{
 /** Saved content and feedback belong to this occurrence, not a live codeword. */
 export type Message = Readonly<
   Codeword & {
+    /** Library metadata at send time, independent of the current selection. */
+    library: Readonly<Pick<CodeLibrary, 'id' | 'name' | 'revision'>>;
     conversationId: string;
     senderId: string;
     createdAt: string;
@@ -65,6 +67,8 @@ export type SharedAppData = Readonly<{
   /** All conversations, sorted by createdAt and then ID. */
   messages: readonly Message[];
 }>;
+
+export type LibrarySettings = Pick<SharedAppData, 'libraries' | 'activeLibraryId'>;
 
 export type AppDataState = Readonly<{
   data: SharedAppData;

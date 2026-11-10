@@ -1,6 +1,7 @@
-import { isLightingPattern, isPressSequence } from '@/features/keycap/sequence';
+import { isLightingPattern, isPressSequence } from '@/features/keycap/codes';
 import type {
   Codeword,
+  CodeLibrary,
   ConnectionStatus,
   Message,
   Profile,
@@ -89,6 +90,25 @@ export function contentError(value: Codeword): string | null {
   return null;
 }
 
+export function codewordSaveError(
+  library: CodeLibrary | undefined,
+  word: Codeword,
+  creating: boolean,
+): string | null {
+  if (!library) return 'This library is no longer available.';
+  if (library.id === 'morse-code') return 'Standard Morse code entries cannot be edited.';
+  const error = contentError(word);
+  if (error) return error;
+
+  const exists = library.codewords.some((entry) => entry.id === word.id);
+  if (creating && exists) return 'This codeword already exists.';
+  if (!creating && !exists) return 'This codeword is no longer available.';
+  if (library.codewords.some((entry) => entry.id !== word.id && entry.code === word.code)) {
+    return 'That click sequence is already used by another codeword.';
+  }
+  return null;
+}
+
 export function messageError(message: Message): string | null {
   if (
     !message ||
@@ -101,6 +121,15 @@ export function messageError(message: Message): string | null {
 
   if (!isTimestamp(message.createdAt))
     return 'createdAt must be a valid ISO timestamp with a time zone.';
+
+  // Historical libraries may be renamed or removed; validate the saved metadata only.
+  if (
+    !message.library ||
+    !isId(message.library.id) ||
+    !isText(message.library.name) ||
+    !Number.isInteger(message.library.revision) ||
+    message.library.revision < 1
+  ) return 'A message needs its original library ID, name, and revision.';
 
   const error = contentError(message);
   if (error) return error;
@@ -133,6 +162,11 @@ export function copyProfile(profile: Profile): Profile {
 export function copyMessage(message: Message): Message {
   return {
     id: message.id,
+    library: {
+      id: message.library.id,
+      name: message.library.name,
+      revision: message.library.revision,
+    },
     conversationId: message.conversationId,
     senderId: message.senderId,
     createdAt: new Date(message.createdAt).toISOString(),

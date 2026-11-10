@@ -71,6 +71,7 @@ src/
     types.ts             Application data contracts
     model.ts             Startup validation, message ordering, state transitions
     validation.ts        Validate and copy incoming data
+    storage.ts           Local saving and restoration of library settings
     defaults.ts          Empty startup and product codewords
     demo_data.ts         Development-only example content
 ```
@@ -84,8 +85,14 @@ linked partner, or none. Unlinking preserves the existing message history.
 
 `src/app/_layout.tsx` enables demo data in development through `ENABLE_DEMO_DATA`.
 Set it to `false` to test a disconnected device with no partner or messages.
-Production builds always start with product defaults. State currently lives in
-memory; restarting the app resets it.
+Saved Clikd codewords (including lighting and vibration settings) and the selected
+library are restored on startup using AsyncStorage. Save Changes waits for the
+device to finish saving; errors leave the editor open so you can retry. Morse
+entries remain fixed. Message history, profiles, and device connection state are
+still session-only; development demo messages are recreated on startup.
+
+The codeword editor previews lighting with the same keycap and playback logic as
+Home. Physical vibration and previews on the Clikd device require hardware integration.
 
 The repository includes the keycap illustration and tab icons. Custom launcher
 icons, favicon, and splash artwork are not supplied; Expo defaults are used until

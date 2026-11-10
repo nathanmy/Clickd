@@ -1,6 +1,6 @@
 import { DEFAULT_THEME } from '@/constants/theme';
 
-import { isPressSequence, type PlaybackSequence } from '@/features/keycap/sequence';
+import { isPressSequence, type LightingSequence, type PlaybackSequence } from '@/features/keycap/codes';
 
 export type LedFrame = Readonly<{
   active: readonly number[];
@@ -56,6 +56,21 @@ export function idleFrame(): LedFrame {
   };
 }
 
+/** Show each pattern's color placement without starting an animation. */
+export function createLightingSample(sequence: LightingSequence): LedFrame {
+  return {
+    active: LED_IDS,
+    colors: LED_IDS.map((id) => {
+      const secondary = sequence.pattern === 'wave'
+        ? WAVE_GROUPS[1].includes(id)
+        : sequence.pattern === 'circular'
+          ? Math.floor(id / 2) % 2 === 1
+          : id % 2 === 1;
+      return secondary ? sequence.secondaryColor ?? sequence.primaryColor : sequence.primaryColor;
+    }),
+  };
+}
+
 export function createPlaybackFrames(
   sequence: PlaybackSequence
 ): {
@@ -63,6 +78,7 @@ export function createPlaybackFrames(
   duration: number;
 } {
   const frames: TimedFrame[] = [];
+  const sample = createLightingSample(sequence);
 
   const presses = [...sequence.code].filter(
     char => char === '•' || char === '—'
@@ -84,12 +100,7 @@ export function createPlaybackFrames(
       // Adjacent LEDs alternate colors if a second exists.
       frames.push({
         at: elapsed,
-        active: LED_IDS,
-        colors: LED_IDS.map(id =>
-          id % 2
-            ? sequence.secondaryColor ?? sequence.primaryColor
-            : sequence.primaryColor
-        ),
+        ...sample,
       });
     } else {
       const groups =
@@ -104,15 +115,10 @@ export function createPlaybackFrames(
         t < duration;
         t += stepMs, step++
       ) {
-        const color =
-          step % 2
-            ? sequence.secondaryColor ?? sequence.primaryColor
-            : sequence.primaryColor;
-
         frames.push({
           at: elapsed + t,
           active: groups[step % groups.length],
-          colors: LED_IDS.map(() => color),
+          colors: sample.colors,
         });
       }
     }
