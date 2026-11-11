@@ -1,9 +1,11 @@
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Animated,
+  AccessibilityInfo,
   AppState,
   FlatList,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -15,7 +17,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { DEFAULT_THEME as theme } from '@/constants/theme';
 import { Keycap } from '@/features/keycap/keycap';
 import { useReplay } from '@/features/keycap/replay';
-import { useAppData, useDeviceData } from '@/state/app_data';
+import {
+  useAppData,
+  useAppTheme,
+  useDeviceData,
+  useThemeBackground,
+} from '@/state/app_data';
 import type { Message } from '@/state/types';
 
 import { MessageRow } from './message';
@@ -24,24 +31,45 @@ import { useMessageScroll } from './use_message_scroll';
 const messageKey = (message: Message) => message.id;
 
 export function HomeScreen() {
-  const {
-    messages,
-    profiles,
-    currentUserId,
-    partnerId,
-    activeConversationId,
-  } = useAppData();
+  const { messages, profiles, currentUserId, partnerId, activeConversationId } =
+    useAppData();
 
   const device = useDeviceData();
+  const backgroundColor = useThemeBackground();
+  const appearance = useAppTheme();
 
   const { frame, playingId, replay, stop } = useReplay();
 
   const [heartOpacity] = useState(() => new Animated.Value(0.65));
+  const [reduceMotion, setReduceMotion] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    const subscription = AccessibilityInfo.addEventListener(
+      'reduceMotionChanged',
+      (value) => {
+        active = false;
+        setReduceMotion(value);
+      },
+    );
+    AccessibilityInfo.isReduceMotionEnabled()
+      .then((value) => {
+        if (active) setReduceMotion(value);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+      subscription.remove();
+    };
+  }, []);
 
   // Preserve chronological order:
   // oldest messages at the top, newest messages below.
   const conversationMessages = useMemo(
-    () => messages.filter((message) => message.conversationId === activeConversationId),
+    () =>
+      messages.filter(
+        (message) => message.conversationId === activeConversationId,
+      ),
     [activeConversationId, messages],
   );
 
@@ -55,46 +83,41 @@ export function HomeScreen() {
   const connected = device.connectionStatus === 'connected';
 
   const batteryLabel =
-    device.battery === null
-      ? '—'
-      : `${Math.round(device.battery)}%`;
+    device.battery === null ? '—' : `${Math.round(device.battery)}%`;
 
   useFocusEffect(
     useCallback(() => {
       heartOpacity.setValue(0.65);
 
-      const pulse = partnerLinked
-        ? Animated.loop(
-            Animated.sequence([
-              Animated.timing(heartOpacity, {
-                toValue: 1,
-                duration: 950,
-                useNativeDriver: true,
-              }),
-              Animated.timing(heartOpacity, {
-                toValue: 0.55,
-                duration: 950,
-                useNativeDriver: true,
-              }),
-            ]),
-          )
-        : null;
+      const pulse =
+        partnerLinked && !reduceMotion
+          ? Animated.loop(
+              Animated.sequence([
+                Animated.timing(heartOpacity, {
+                  toValue: 1,
+                  duration: 950,
+                  useNativeDriver: Platform.OS !== 'web',
+                }),
+                Animated.timing(heartOpacity, {
+                  toValue: 0.55,
+                  duration: 950,
+                  useNativeDriver: Platform.OS !== 'web',
+                }),
+              ]),
+            )
+          : null;
 
       if (AppState.currentState === 'active') {
         pulse?.start();
       }
 
-      const subscription = AppState.addEventListener(
-        'change',
-        (status) => {
-          if (status === 'active') {
-            pulse?.start();
-          } else {
-            pulse?.stop();
-            stop();
-          }
-        },
-      );
+      const subscription = AppState.addEventListener('change', (status) => {
+        if (status === 'active') {
+          pulse?.start();
+        } else {
+          pulse?.stop();
+        }
+      });
 
       // Also reset playback when the linked partner or conversation changes.
       return () => {
@@ -107,6 +130,7 @@ export function HomeScreen() {
       partnerId,
       heartOpacity,
       partnerLinked,
+      reduceMotion,
       stop,
     ]),
   );
@@ -116,10 +140,7 @@ export function HomeScreen() {
       <MessageRow
         message={item}
         profile={
-          Object.prototype.hasOwnProperty.call(
-            profiles,
-            item.senderId,
-          )
+          Object.prototype.hasOwnProperty.call(profiles, item.senderId)
             ? profiles[item.senderId]
             : undefined
         }
@@ -128,52 +149,28 @@ export function HomeScreen() {
         onReplay={replay}
       />
     ),
-    [
-      currentUserId,
-      playingId,
-      profiles,
-      replay,
-    ],
+    [currentUserId, playingId, profiles, replay],
   );
 
   return (
     <SafeAreaView
-      style={styles.screen}
+      style={[styles.screen, { backgroundColor }]}
       edges={['top', 'left', 'right']}
     >
       <View style={styles.headerSection}>
         <View style={styles.header}>
-          <Text style={styles.title}>Home</Text>
-
-          <View
-            accessible
-            accessibilityLabel={
-              device.battery === null
-                ? 'Device battery unavailable'
-                : `Device battery ${batteryLabel}`
-            }
-            style={styles.battery}
-          >
-            <View style={styles.batteryShell}>
-              <View
-                style={[
-                  styles.batteryLevel,
-                  {
-                    width:
-                      (22 * (device.battery ?? 0)) / 100,
-                  },
-                ]}
-              />
-            </View>
-
-            <Text style={styles.batteryText}>
-              {batteryLabel}
-            </Text>
-          </View>
+          <Text accessibilityRole="header" style={styles.title}>
+            Home
+          </Text>
         </View>
 
         <View style={styles.devices}>
-          <View style={styles.connectionLine} />
+          <View
+            style={[
+              styles.connectionLine,
+              { backgroundColor: appearance.controlSelected },
+            ]}
+          />
 
           <Keycap
             frame={frame}
@@ -182,45 +179,76 @@ export function HomeScreen() {
           />
 
           <Animated.View
-            style={[styles.heartCircle, { opacity: heartOpacity }]}
+            style={[
+              styles.heartCircle,
+              {
+                opacity: heartOpacity,
+                backgroundColor: appearance.controlSurface,
+              },
+            ]}
           >
             <Text style={styles.heart}>♡</Text>
           </Animated.View>
 
           <Keycap faded={!partnerLinked} />
         </View>
+        <View style={styles.deviceDetails}>
+          <View style={styles.deviceInfo}>
+            <View
+              accessible
+              accessibilityLabel={
+                device.battery === null
+                  ? 'Device battery unavailable'
+                  : `Device battery ${batteryLabel}`
+              }
+              style={styles.battery}
+            >
+              <View style={styles.batteryShell}>
+                <View
+                  style={[
+                    styles.batteryLevel,
+                    {
+                      width: (18 * (device.battery ?? 0)) / 100,
+                    },
+                  ]}
+                />
+              </View>
+
+              <Text style={styles.batteryText}>{batteryLabel}</Text>
+            </View>
+          </View>
+        </View>
 
         <View style={styles.statusRow}>
-          <View style={styles.statusPill}>
+          <View
+            style={[
+              styles.statusPill,
+              { backgroundColor: appearance.receivedBubble },
+            ]}
+          >
             <View
               style={[
                 styles.statusDot,
                 {
-                  backgroundColor: partnerLinked
-                    ? '#22C55E'
-                    : '#9CA3AF',
+                  backgroundColor: partnerLinked ? '#22C55E' : '#9CA3AF',
                 },
               ]}
             />
 
             <Text style={styles.statusLabel}>
-              {partnerLinked
-                ? 'Linked to partner'
-                : 'Not linked'}
+              {partnerLinked ? 'Linked to partner' : 'Not linked'}
             </Text>
           </View>
         </View>
       </View>
 
       <View style={styles.messagesSection}>
-        <Text style={styles.sectionTitle}>
+        <Text accessibilityRole="header" style={styles.sectionTitle}>
           Messages
         </Text>
 
         {conversationMessages.length === 0 ? (
-          <Text style={styles.emptyText}>
-            Your messages will appear here.
-          </Text>
+          <Text style={styles.emptyText}>Your messages will appear here.</Text>
         ) : (
           <FlatList
             key={activeConversationId}
@@ -243,11 +271,13 @@ export function HomeScreen() {
             accessibilityRole="button"
             accessibilityLabel={`Show ${newMessageLabel}`}
             onPress={() => showLatest(true)}
-            style={styles.newMessages}
+            style={({ pressed }) => [
+              styles.newMessages,
+              { backgroundColor: appearance.controlSurface },
+              pressed && styles.pressed,
+            ]}
           >
-            <Text style={styles.newMessagesText}>
-              {newMessageLabel} ↓
-            </Text>
+            <Text style={styles.newMessagesText}>{newMessageLabel} ↓</Text>
           </Pressable>
         )}
       </View>
@@ -285,8 +315,8 @@ const styles = StyleSheet.create({
   },
 
   batteryShell: {
-    width: 30,
-    height: 17,
+    width: 26,
+    height: 15,
     borderWidth: 2,
     borderColor: theme.text,
     borderRadius: 4,
@@ -301,7 +331,7 @@ const styles = StyleSheet.create({
   },
 
   batteryText: {
-    fontSize: 17,
+    fontSize: 13,
     color: theme.text,
   },
 
@@ -334,7 +364,7 @@ const styles = StyleSheet.create({
   heart: {
     fontSize: 34,
     lineHeight: 38,
-    color: theme.accent,
+    color: theme.text,
   },
 
   statusRow: {
@@ -343,7 +373,18 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
 
+  deviceDetails: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  deviceInfo: { width: '42%', alignItems: 'center' },
+  pressed: { opacity: 0.65 },
+
   statusPill: {
+    borderWidth: 1,
+    borderColor: theme.selection,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 9,
@@ -390,6 +431,8 @@ const styles = StyleSheet.create({
   },
 
   newMessages: {
+    borderWidth: 1,
+    borderColor: theme.outline,
     position: 'absolute',
     bottom: 12,
     alignSelf: 'center',

@@ -1,6 +1,13 @@
 import { DEFAULT_THEME } from '@/constants/theme';
 
-import { isPressSequence, type LightingSequence, type PlaybackSequence } from '@/features/keycap/codes';
+import {
+  isPressSequence,
+  MAX_PLAYBACK_DURATION_MS,
+  MAX_PLAYBACK_PRESSES,
+  MAX_PRESS_DURATION_MS,
+  type LightingSequence,
+  type PlaybackSequence,
+} from '@/features/keycap/codes';
 
 export type LedFrame = Readonly<{
   active: readonly number[];
@@ -61,32 +68,42 @@ export function createLightingSample(sequence: LightingSequence): LedFrame {
   return {
     active: LED_IDS,
     colors: LED_IDS.map((id) => {
-      const secondary = sequence.pattern === 'wave'
-        ? WAVE_GROUPS[1].includes(id)
-        : sequence.pattern === 'circular'
-          ? Math.floor(id / 2) % 2 === 1
-          : id % 2 === 1;
-      return secondary ? sequence.secondaryColor ?? sequence.primaryColor : sequence.primaryColor;
+      const secondary =
+        sequence.pattern === 'wave'
+          ? WAVE_GROUPS[1].includes(id)
+          : sequence.pattern === 'circular'
+            ? Math.floor(id / 2) % 2 === 1
+            : id % 2 === 1;
+      return secondary
+        ? (sequence.secondaryColor ?? sequence.primaryColor)
+        : sequence.primaryColor;
     }),
   };
 }
 
-export function createPlaybackFrames(
-  sequence: PlaybackSequence
-): {
+export function createPlaybackFrames(sequence: PlaybackSequence): {
   frames: TimedFrame[];
   duration: number;
 } {
   const frames: TimedFrame[] = [];
+  if (sequence.code.length > MAX_PLAYBACK_PRESSES)
+    return { frames, duration: 0 };
   const sample = createLightingSample(sequence);
 
   const presses = [...sequence.code].filter(
-    char => char === '•' || char === '—'
+    (char) => char === '•' || char === '—',
   );
 
   // Fall back as a whole if measured timing is incomplete or malformed.
   const measured = sequence.presses;
-  const useMeasuredTiming = isPressSequence(measured, presses.length);
+  // Keep old snapshots readable, but never allocate an unbounded recording's frames.
+  const useMeasuredTiming =
+    isPressSequence(measured, presses.length) &&
+    measured.every(
+      (press) =>
+        press.durationMs <= MAX_PRESS_DURATION_MS &&
+        press.offsetMs + press.durationMs <= MAX_PLAYBACK_DURATION_MS,
+    );
 
   let elapsed = 0;
 
@@ -104,17 +121,11 @@ export function createPlaybackFrames(
       });
     } else {
       const groups =
-        sequence.pattern === 'circular'
-          ? CIRCULAR_GROUPS
-          : WAVE_GROUPS;
+        sequence.pattern === 'circular' ? CIRCULAR_GROUPS : WAVE_GROUPS;
 
       const stepMs = sequence.pattern === 'circular' ? 90 : 110;
 
-      for (
-        let t = 0, step = 0;
-        t < duration;
-        t += stepMs, step++
-      ) {
+      for (let t = 0, step = 0; t < duration; t += stepMs, step++) {
         frames.push({
           at: elapsed + t,
           active: groups[step % groups.length],
@@ -167,7 +178,10 @@ export function schedulePlayback(
     if (elapsed >= duration + 20) {
       onComplete();
     } else {
-      timer = setTimeout(advance, Math.max(0, nextAt - (performance.now() - startedAt)));
+      timer = setTimeout(
+        advance,
+        Math.max(0, nextAt - (performance.now() - startedAt)),
+      );
     }
   }
 

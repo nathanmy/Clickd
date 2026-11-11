@@ -1,8 +1,28 @@
-import { createContext, useCallback, useContext, useMemo, useReducer, useRef, type PropsWithChildren } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useReducer,
+  useRef,
+  type PropsWithChildren,
+} from 'react';
+import { APP_THEMES } from '@/constants/theme';
 
-import { initialize, reducer, reduceLibrarySettings, type LibraryAction } from './model';
-import { saveLibrarySettings } from './storage';
-import { codewordSaveError, copyMessage, copyProfile, isBattery, isId, isStatus, isText, messageError, profileError } from './validation';
+import { initialize, reducer, type Action } from './model';
+import { saveAppData } from './storage';
+import {
+  codewordSaveError,
+  copyMessage,
+  copyProfile,
+  isBattery,
+  isId,
+  isStatus,
+  isText,
+  messageError,
+  preferencesError,
+  profileError,
+} from './validation';
 import type {
   ActionResult,
   AppDataState,
@@ -10,22 +30,34 @@ import type {
   ConnectionStatus,
   DeviceState,
   Message,
-  LibrarySettings,
+  Preferences,
   Profile,
   SharedAppData,
 } from './types';
 
 type AppActions = Readonly<{
-  deleteCodeword: (libraryId: string, codewordId: string) => Promise<ActionResult>;
+  deleteCodeword: (
+    libraryId: string,
+    codewordId: string,
+  ) => Promise<ActionResult>;
   setActiveLibrary: (libraryId: string) => Promise<ActionResult>;
-  saveCodeword: (libraryId: string, input: Omit<Codeword, 'id'>, codewordId?: string) => Promise<ActionResult>;
-  addMessage: (message: Message) => ActionResult;
+  saveCodeword: (
+    libraryId: string,
+    input: Omit<Codeword, 'id'>,
+    codewordId?: string,
+  ) => Promise<ActionResult>;
+  addMessage: (message: Message) => Promise<ActionResult>;
 
   /** Upsert metadata; a message can arrive before its sender's profile. */
-  updateProfile: (profile: Profile) => ActionResult;
+  updateProfile: (profile: Profile) => Promise<ActionResult>;
 
-  linkPartner: (profile: Profile, conversationId: string) => ActionResult;
-  unlinkPartner: () => void;
+  linkPartner: (
+    profile: Profile,
+    conversationId: string,
+  ) => Promise<ActionResult>;
+  unlinkPartner: () => Promise<ActionResult>;
+  /** Pass only changed fields; the queue merges them into the latest settings. */
+  updatePreferences: (changes: Partial<Preferences>) => Promise<ActionResult>;
   setConnectionStatus: (status: ConnectionStatus) => ActionResult;
   setBattery: (battery: number | null) => ActionResult;
 }>;
@@ -38,6 +70,10 @@ const OK: ActionResult = Object.freeze({ ok: true });
 let codewordCounter = 0;
 
 const fail = (error: string): ActionResult => ({ ok: false, error });
+type DurableAction = Exclude<
+  Action,
+  { type: 'device/connection' | 'device/battery' }
+>;
 
 type Props = PropsWithChildren<{
   /** Initial state is read once. Actions perform all later updates. */
@@ -47,37 +83,49 @@ type Props = PropsWithChildren<{
 export function AppDataProvider({ children, initialState }: Props) {
   const [state, dispatch] = useReducer(reducer, initialState, initialize);
   const currentUserId = state.data.currentUserId;
-  const savedSettings = useRef<LibrarySettings>({
-    libraries: state.data.libraries,
-    activeLibraryId: state.data.activeLibraryId,
-  });
+  const savedData = useRef(state.data);
   const writeQueue = useRef(Promise.resolve());
 
-  // Serialize library edits and selections; publish them only after storage succeeds.
-  const commitLibraryChange = useCallback((createAction: (settings: LibrarySettings) => LibraryAction | ActionResult) => {
-    const operation = writeQueue.current.then<ActionResult>(async () => {
-      const action = createAction(savedSettings.current);
-      if ('ok' in action) return action;
-      const next = reduceLibrarySettings(savedSettings.current, action);
-      if (next === savedSettings.current) return OK;
-      try {
-        await saveLibrarySettings(next);
-      } catch {
-        return fail('Could not save your library on this device. Please try again.');
-      }
-      savedSettings.current = next;
-      dispatch(action);
-      return OK;
-    });
-    writeQueue.current = operation.then(() => undefined, () => undefined);
-    return operation;
-  }, []);
+  // Serialize all durable changes and publish only after storage succeeds.
+  const commitChange = useCallback(
+    (createAction: (data: SharedAppData) => DurableAction | ActionResult) => {
+      const operation = writeQueue.current.then<ActionResult>(async () => {
+        const action = createAction(savedData.current);
+        if ('ok' in action) return action;
+        const next = reducer(
+          {
+            data: savedData.current,
+            device: { connectionStatus: 'disconnected', battery: null },
+          },
+          action,
+        ).data;
+        if (next === savedData.current) return OK;
+        try {
+          await saveAppData(next, savedData.current);
+        } catch {
+          return fail(
+            'Could not save your changes on this device. Please try again.',
+          );
+        }
+        savedData.current = next;
+        dispatch(action);
+        return OK;
+      });
+      writeQueue.current = operation.then(
+        () => undefined,
+        () => undefined,
+      );
+      return operation;
+    },
+    [],
+  );
 
   const actions = useMemo<AppActions>(
     () => ({
       deleteCodeword(libraryId, codewordId) {
-        return commitLibraryChange(({ libraries }) => {
-          if (libraryId !== 'clikd-codes') return fail('Only Clikd codewords can be deleted.');
+        return commitChange(({ libraries }) => {
+          if (libraryId !== 'clikd-codes')
+            return fail('Only Clickd codewords can be deleted.');
           const library = libraries[libraryId];
           if (!library?.codewords.some((word) => word.id === codewordId)) {
             return fail('This codeword is no longer available.');
@@ -86,7 +134,7 @@ export function AppDataProvider({ children, initialState }: Props) {
         });
       },
       setActiveLibrary(libraryId) {
-        return commitLibraryChange(({ libraries }) => {
+        return commitChange(({ libraries }) => {
           if (!Object.prototype.hasOwnProperty.call(libraries, libraryId)) {
             return fail('This library is no longer available.');
           }
@@ -95,50 +143,65 @@ export function AppDataProvider({ children, initialState }: Props) {
       },
       saveCodeword(libraryId, input, codewordId) {
         // Capture the draft before awaiting the queued write.
-        const draft = { ...input, ...(input.vibration ? { vibration: { ...input.vibration } } : {}) };
-        return commitLibraryChange(({ libraries }) => {
-          const library = Object.prototype.hasOwnProperty.call(libraries, libraryId)
-            ? libraries[libraryId] : undefined;
+        const draft = {
+          ...input,
+          ...(input.vibration ? { vibration: { ...input.vibration } } : {}),
+        };
+        return commitChange(({ libraries }) => {
+          const library = Object.prototype.hasOwnProperty.call(
+            libraries,
+            libraryId,
+          )
+            ? libraries[libraryId]
+            : undefined;
           if (!library) return fail('This library is no longer available.');
           if (!draft.code) return fail('Add at least one short or long click.');
-          if (!isText(draft.meaning)) return fail('Enter a meaning for this codeword.');
-          const existing = library.codewords.find((word) => word.id === codewordId);
-          if (codewordId !== undefined && !existing) return fail('This codeword is no longer available.');
+          if (!isText(draft.meaning))
+            return fail('Enter a meaning for this codeword.');
+          const existing = library.codewords.find(
+            (word) => word.id === codewordId,
+          );
+          if (codewordId !== undefined && !existing)
+            return fail('This codeword is no longer available.');
           const word: Codeword = {
             ...draft,
             id: existing?.id ?? `custom-${Date.now()}-${++codewordCounter}`,
             meaning: draft.meaning.trim(),
           };
-          const error = codewordSaveError(library, word, codewordId === undefined);
+          const error = codewordSaveError(
+            library,
+            word,
+            codewordId === undefined,
+          );
           if (error) return fail(error);
-          return { type: 'codeword/save', libraryId, word, creating: codewordId === undefined };
+          return {
+            type: 'codeword/save',
+            libraryId,
+            word,
+            creating: codewordId === undefined,
+          };
         });
       },
-      addMessage(message) {
+      async addMessage(message) {
         const error = messageError(message);
         if (error) return fail(error);
 
-        dispatch({
-          type: 'message/add',
-          message: copyMessage(message),
-        });
-
-        return OK;
+        const snapshot = copyMessage(message);
+        return commitChange(() => ({ type: 'message/add', message: snapshot }));
       },
 
-      updateProfile(profile) {
+      async updateProfile(profile) {
         const error = profileError(profile);
         if (error) return fail(error);
 
-        dispatch({
+        const snapshot = copyProfile(profile);
+        return commitChange(() => ({
           type: 'profile/update',
-          profile: copyProfile(profile),
-        });
-
-        return OK;
+          profile: snapshot,
+        }));
       },
 
-      linkPartner(profile, conversationId) {
+      async linkPartner(profile, conversationId) {
         const error = profileError(profile);
         if (error) return fail(error);
 
@@ -148,24 +211,30 @@ export function AppDataProvider({ children, initialState }: Props) {
         if (!isId(conversationId))
           return fail('A partner link needs a stable conversation ID.');
 
-        dispatch({
+        const snapshot = copyProfile(profile);
+        return commitChange(() => ({
           type: 'partner/link',
-          profile: copyProfile(profile),
+          profile: snapshot,
           conversationId,
-        });
-
-        return OK;
+        }));
       },
 
       unlinkPartner() {
-        dispatch({
-          type: 'partner/unlink',
-        });
+        return commitChange(() => ({ type: 'partner/unlink' }));
       },
 
+      updatePreferences(changes) {
+        const patch = { ...changes };
+        return commitChange((data) => {
+          const preferences = { ...data.preferences, ...patch };
+          const error = preferencesError(preferences);
+          return error
+            ? fail(error)
+            : { type: 'preferences/update', preferences };
+        });
+      },
       setConnectionStatus(status) {
-        if (!isStatus(status))
-          return fail('Unknown device connection status.');
+        if (!isStatus(status)) return fail('Unknown device connection status.');
 
         dispatch({
           type: 'device/connection',
@@ -187,7 +256,7 @@ export function AppDataProvider({ children, initialState }: Props) {
         return OK;
       },
     }),
-    [currentUserId, dispatch, commitLibraryChange],
+    [currentUserId, dispatch, commitChange],
   );
 
   return (
@@ -217,6 +286,15 @@ export function useDeviceData(): DeviceState {
     throw new Error('useDeviceData must be inside AppDataProvider.');
 
   return value;
+}
+
+/** Read the selected palette without duplicating theme identifiers. */
+export function useThemeBackground(): string {
+  return useAppTheme().color;
+}
+
+export function useAppTheme() {
+  return APP_THEMES[useAppData().preferences.themeId];
 }
 
 export function useAppActions(): AppActions {

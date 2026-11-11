@@ -1,5 +1,18 @@
 export const LIGHTING_PATTERNS = ['solid', 'circular', 'wave'] as const;
 
+export const DEFAULT_FEEDBACK = {
+  idleLedColor: '#DCE7F9',
+  sentLedColor: '#22C55E',
+} as const;
+export const DEFAULT_VIBRATION = {
+  enabled: true,
+  strength: 0.65,
+  durationScale: 1,
+} as const;
+export const MAX_PLAYBACK_PRESSES = 64;
+export const MAX_PLAYBACK_DURATION_MS = 60_000;
+export const MAX_PRESS_DURATION_MS = 10_000;
+
 export type LightingPattern = (typeof LIGHTING_PATTERNS)[number];
 
 export function isLightingPattern(value: unknown): value is LightingPattern {
@@ -47,7 +60,8 @@ export function isPressSequence(
       press.offsetMs < previousEnd ||
       (index === 0 && press.offsetMs !== 0) ||
       !Number.isFinite(press.offsetMs + press.durationMs)
-    ) return false;
+    )
+      return false;
 
     previousEnd = press.offsetMs + press.durationMs;
   }
@@ -69,14 +83,40 @@ export const LED_COLORS = {
 
 /** International Morse reference; independent of the active messaging library. */
 export const MORSE_CODE = [
-  ['A', '•—'], ['B', '—•••'], ['C', '—•—•'], ['D', '—••'],
-  ['E', '•'], ['F', '••—•'], ['G', '——•'], ['H', '••••'],
-  ['I', '••'], ['J', '•———'], ['K', '—•—'], ['L', '•—••'],
-  ['M', '——'], ['N', '—•'], ['O', '———'], ['P', '•——•'],
-  ['Q', '——•—'], ['R', '•—•'], ['S', '•••'], ['T', '—'],
-  ['U', '••—'], ['V', '•••—'], ['W', '•——'], ['X', '—••—'],
-  ['Y', '—•——'], ['Z', '——••'],
-  ['0', '—————'], ['1', '•————'], ['2', '••———'], ['3', '•••——'],
-  ['4', '••••—'], ['5', '•••••'], ['6', '—••••'], ['7', '——•••'],
-  ['8', '———••'], ['9', '————•'],
+  ['A', '•—'],
+  ['B', '—•••'],
+  ['C', '—•—•'],
+  ['D', '—••'],
+  ['E', '•'],
+  ['F', '••—•'],
+  ['G', '——•'],
+  ['H', '••••'],
+  ['I', '••'],
+  ['J', '•———'],
+  ['K', '—•—'],
+  ['L', '•—••'],
+  ['M', '——'],
+  ['N', '—•'],
+  ['O', '———'],
+  ['P', '•——•'],
+  ['Q', '——•—'],
+  ['R', '•—•'],
+  ['S', '•••'],
+  ['T', '—'],
+  ['U', '••—'],
+  ['V', '•••—'],
+  ['W', '•——'],
+  ['X', '—••—'],
+  ['Y', '—•——'],
+  ['Z', '——••'],
+  ['0', '—————'],
+  ['1', '•————'],
+  ['2', '••———'],
+  ['3', '•••——'],
+  ['4', '••••—'],
+  ['5', '•••••'],
+  ['6', '—••••'],
+  ['7', '——•••'],
+  ['8', '———••'],
+  ['9', '————•'],
 ] as const;

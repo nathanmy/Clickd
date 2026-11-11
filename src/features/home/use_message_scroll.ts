@@ -1,5 +1,9 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
-import type { FlatList, NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
+import type {
+  FlatList,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+} from 'react-native';
 import type { Message } from '@/state/types';
 
 type MessageSnapshot = Readonly<{
@@ -58,11 +62,15 @@ export function useMessageScroll(
   // Content measurements can arrive before or after this effect.
   // Follow messages only after their current layout is measured.
   useLayoutEffect(() => {
-    const conversationChanged = previous.current.conversationId !== activeConversationId;
-    const added = conversationMessages.filter((message) => !previous.current.ids.has(message.id));
-    const followNewMessages = added.length > 0 && (
-      nearBottom.current || added.some((message) => message.senderId === currentUserId)
+    const conversationChanged =
+      previous.current.conversationId !== activeConversationId;
+    const added = conversationMessages.filter(
+      (message) => !previous.current.ids.has(message.id),
     );
+    const followNewMessages =
+      added.length > 0 &&
+      (nearBottom.current ||
+        added.some((message) => message.senderId === currentUserId));
     previous.current = {
       conversationId: activeConversationId,
       ids: new Set(conversationMessages.map((message) => message.id)),
@@ -95,26 +103,17 @@ export function useMessageScroll(
   const onContentSizeChange = useCallback(() => {
     measuredMessages.current = conversationMessages;
     flushPendingScroll(conversationMessages);
-  }, [
-    conversationMessages,
-    flushPendingScroll,
-  ]);
+  }, [conversationMessages, flushPendingScroll]);
 
   const onScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const {
-        contentOffset,
-        contentSize,
-        layoutMeasurement,
-      } = event.nativeEvent;
+      const { contentOffset, contentSize, layoutMeasurement } =
+        event.nativeEvent;
 
       const distanceFromBottom =
-        contentSize.height -
-        layoutMeasurement.height -
-        contentOffset.y;
+        contentSize.height - layoutMeasurement.height - contentOffset.y;
 
-      nearBottom.current =
-        distanceFromBottom <= NEAR_BOTTOM_PX;
+      nearBottom.current = distanceFromBottom <= NEAR_BOTTOM_PX;
 
       if (nearBottom.current) {
         setNewMessageCount(0);

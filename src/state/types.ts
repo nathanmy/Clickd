@@ -1,4 +1,5 @@
 import type { LightingSequence, PressTiming } from '@/features/keycap/codes';
+import type { ThemeId } from '@/constants/theme';
 export type { PressTiming } from '@/features/keycap/codes';
 
 export type Profile = Readonly<{
@@ -41,7 +42,9 @@ export type Message = Readonly<
 >;
 
 export type Preferences = Readonly<{
-  themeId: 'classic';
+  themeId: ThemeId;
+  idleLedColor: string;
+  sentLedColor: string;
 }>;
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected';
@@ -57,6 +60,8 @@ export type DeviceState =
     }>;
 
 export type SharedAppData = Readonly<{
+  /** Coverage describes recorded history, not device uptime. */
+  history: Readonly<{ source: 'demo' | 'session'; startedAt: string }>;
   currentUserId: string;
   profiles: Readonly<Record<string, Profile>>;
   partnerId: string | null;
@@ -68,7 +73,10 @@ export type SharedAppData = Readonly<{
   messages: readonly Message[];
 }>;
 
-export type LibrarySettings = Pick<SharedAppData, 'libraries' | 'activeLibraryId'>;
+export type LibrarySettings = Pick<
+  SharedAppData,
+  'libraries' | 'activeLibraryId'
+>;
 
 export type AppDataState = Readonly<{
   data: SharedAppData;
@@ -77,4 +85,5 @@ export type AppDataState = Readonly<{
 
 /** Valid input was dispatched; duplicates and stale telemetry can be no-ops. */
 export type ActionResult =
-  Readonly<{ ok: true }> | Readonly<{ ok: false; error: string }>;
+  | Readonly<{ ok: true }>
+  | Readonly<{ ok: false; error: string }>;

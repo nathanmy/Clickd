@@ -1,17 +1,24 @@
 import { isLightingPattern, isPressSequence } from '@/features/keycap/codes';
+import { isThemeId } from '@/constants/theme';
 import type {
   Codeword,
   CodeLibrary,
   ConnectionStatus,
   Message,
   Profile,
+  Preferences,
   VibrationSettings,
 } from './types';
 
-const ISO_TIME = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/u;
+const ISO_TIME =
+  /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/u;
 
 export const isId = (value: unknown): value is string =>
   typeof value === 'string' && value.length > 0 && value === value.trim();
+
+// Apply limits to new edits, preserving older library entries and message snapshots.
+export const MAX_CODE_CLICKS = 16;
+export const MAX_CODEWORD_MEANING = 120;
 
 export const isText = (value: unknown): value is string =>
   typeof value === 'string' && value.trim().length > 0;
@@ -19,14 +26,24 @@ export const isText = (value: unknown): value is string =>
 const isColor = (value: unknown): value is string =>
   typeof value === 'string' && /^#[0-9a-f]{6}$/iu.test(value);
 
+export function preferencesError(value: Preferences): string | null {
+  if (!value || !isThemeId(value.themeId)) return 'Choose a supported theme.';
+  if (!isColor(value.idleLedColor) || !isColor(value.sentLedColor))
+    return 'Choose valid feedback colors.';
+  return null;
+}
+
 export const isStatus = (value: unknown): value is ConnectionStatus =>
   value === 'disconnected' || value === 'connecting' || value === 'connected';
 
 export const isBattery = (value: unknown): value is number | null =>
   value === null ||
-  (typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100);
+  (typeof value === 'number' &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    value <= 100);
 
-function isTimestamp(value: unknown): value is string {
+export function isTimestamp(value: unknown): value is string {
   if (typeof value !== 'string' || !ISO_TIME.test(value)) return false;
 
   const day = new Date(`${value.slice(0, 10)}T00:00:00.000Z`);
@@ -96,14 +113,23 @@ export function codewordSaveError(
   creating: boolean,
 ): string | null {
   if (!library) return 'This library is no longer available.';
-  if (library.id === 'morse-code') return 'Standard Morse code entries cannot be edited.';
+  if (library.id === 'morse-code')
+    return 'Standard Morse code entries cannot be edited.';
   const error = contentError(word);
   if (error) return error;
+  if (word.code.length > MAX_CODE_CLICKS)
+    return `Use no more than ${MAX_CODE_CLICKS} clicks.`;
+  if (word.meaning.trim().length > MAX_CODEWORD_MEANING)
+    return `Keep the meaning within ${MAX_CODEWORD_MEANING} characters.`;
 
   const exists = library.codewords.some((entry) => entry.id === word.id);
   if (creating && exists) return 'This codeword already exists.';
   if (!creating && !exists) return 'This codeword is no longer available.';
-  if (library.codewords.some((entry) => entry.id !== word.id && entry.code === word.code)) {
+  if (
+    library.codewords.some(
+      (entry) => entry.id !== word.id && entry.code === word.code,
+    )
+  ) {
     return 'That click sequence is already used by another codeword.';
   }
   return null;
@@ -129,7 +155,8 @@ export function messageError(message: Message): string | null {
     !isText(message.library.name) ||
     !Number.isInteger(message.library.revision) ||
     message.library.revision < 1
-  ) return 'A message needs its original library ID, name, and revision.';
+  )
+    return 'A message needs its original library ID, name, and revision.';
 
   const error = contentError(message);
   if (error) return error;

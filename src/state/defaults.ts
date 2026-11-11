@@ -1,4 +1,8 @@
-import { LED_COLORS, MORSE_CODE } from '@/features/keycap/codes';
+import {
+  DEFAULT_FEEDBACK,
+  LED_COLORS,
+  MORSE_CODE,
+} from '@/features/keycap/codes';
 import type { AppDataState, CodeLibrary, Profile } from './types';
 
 /** Fresh objects each time; these are product defaults, not demo content. */
@@ -11,7 +15,7 @@ export function createDefaultState(): AppDataState {
 
   const library: CodeLibrary = {
     id: 'clikd-codes',
-    name: 'Clikd Codes',
+    name: 'Clickd Codes',
     revision: 1,
     codewords: [
       {
@@ -60,13 +64,14 @@ export function createDefaultState(): AppDataState {
 
   return {
     data: {
+      history: { source: 'session', startedAt: new Date().toISOString() },
       currentUserId: you.id,
       profiles: { [you.id]: you },
       partnerId: null,
       activeConversationId: null,
       libraries: { [library.id]: library, [morse.id]: morse },
       activeLibraryId: library.id,
-      preferences: { themeId: 'classic' },
+      preferences: { themeId: 'classic', ...DEFAULT_FEEDBACK },
       messages: [],
     },
     device: { connectionStatus: 'disconnected', battery: null },

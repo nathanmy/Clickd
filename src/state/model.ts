@@ -1,9 +1,28 @@
 import { createDefaultState } from './defaults';
 import {
-  contentError, codewordSaveError, copyMessage, copyProfile, isBattery, isId, isStatus,
-  isText, messageError, profileError,
+  contentError,
+  codewordSaveError,
+  copyMessage,
+  copyProfile,
+  isBattery,
+  isId,
+  isStatus,
+  isText,
+  isTimestamp,
+  messageError,
+  preferencesError,
+  profileError,
 } from './validation';
-import type { AppDataState, CodeLibrary, Codeword, ConnectionStatus, LibrarySettings, Message, Profile } from './types';
+import type {
+  AppDataState,
+  CodeLibrary,
+  Codeword,
+  ConnectionStatus,
+  LibrarySettings,
+  Message,
+  Preferences,
+  Profile,
+} from './types';
 
 function compareMessages(left: Message, right: Message): number {
   const difference = Date.parse(left.createdAt) - Date.parse(right.createdAt);
@@ -34,10 +53,16 @@ function insertMessage(
   return [...messages.slice(0, start), message, ...messages.slice(start)];
 }
 
-/** Seeds are trusted app configuration, not an unknown storage/network payload. */
+/** Validate and copy startup data, including restored local snapshots. */
 export function initialize(seed?: AppDataState): AppDataState {
   const source = seed ?? createDefaultState();
   const { data, device } = source;
+  if (
+    !data.history ||
+    !['demo', 'session'].includes(data.history.source) ||
+    !isTimestamp(data.history.startedAt)
+  )
+    throw new Error('Invalid message history coverage.');
 
   const profiles = Object.fromEntries<Profile>(
     Object.entries(data.profiles).map(([id, profile]): [string, Profile] => {
@@ -50,13 +75,17 @@ export function initialize(seed?: AppDataState): AppDataState {
     }),
   );
 
-  if (!Object.prototype.hasOwnProperty.call(profiles, data.currentUserId)) {
+  if (
+    !isId(data.currentUserId) ||
+    !Object.prototype.hasOwnProperty.call(profiles, data.currentUserId)
+  ) {
     throw new Error('Startup state needs a current-user profile.');
   }
 
   if (
     data.partnerId !== null &&
-    (!Object.prototype.hasOwnProperty.call(profiles, data.partnerId) ||
+    (!isId(data.partnerId) ||
+      !Object.prototype.hasOwnProperty.call(profiles, data.partnerId) ||
       data.partnerId === data.currentUserId ||
       !isId(data.activeConversationId))
   ) {
@@ -76,7 +105,11 @@ export function initialize(seed?: AppDataState): AppDataState {
       const error = messageError(message);
 
       if (error || ids.has(message.id))
-        throw new Error(error ?? 'Startup message IDs must be unique.');
+        throw new Error(
+          error
+            ? `Message ${message.id}: ${error}`
+            : 'Startup message IDs must be unique.',
+        );
 
       ids.add(message.id);
       return copyMessage(message);
@@ -92,49 +125,55 @@ export function initialize(seed?: AppDataState): AppDataState {
   }
 
   if (
-    !Object.prototype.hasOwnProperty.call(data.libraries, data.activeLibraryId) ||
-    data.preferences.themeId !== 'classic'
+    !Object.prototype.hasOwnProperty.call(
+      data.libraries,
+      data.activeLibraryId,
+    ) ||
+    preferencesError(data.preferences)
   ) {
     throw new Error('Invalid startup library or theme selection.');
   }
 
   const libraries = Object.fromEntries<CodeLibrary>(
-    Object.entries(data.libraries).map(([id, library]): [string, CodeLibrary] => {
-      if (
-        id !== library.id ||
-        !isId(id) ||
-        !isText(library.name) ||
-        !Number.isInteger(library.revision) ||
-        library.revision < 1
-      ) {
-        throw new Error('Invalid startup code library.');
-      }
-
-      const wordIds = new Set<string>();
-      const codes = new Set<string>();
-
-      const codewords = library.codewords.map((word) => {
-        const error = contentError(word);
-
-        if (error || wordIds.has(word.id) || codes.has(word.code)) {
-          throw new Error(
-            error ?? 'Codeword IDs and sequences must be unique within a library.',
-          );
+    Object.entries(data.libraries).map(
+      ([id, library]): [string, CodeLibrary] => {
+        if (
+          id !== library.id ||
+          !isId(id) ||
+          !isText(library.name) ||
+          !Number.isInteger(library.revision) ||
+          library.revision < 1
+        ) {
+          throw new Error('Invalid startup code library.');
         }
 
-        wordIds.add(word.id);
-        codes.add(word.code);
+        const wordIds = new Set<string>();
+        const codes = new Set<string>();
 
-        return {
-          ...word,
-          ...(word.vibration === undefined
-            ? {}
-            : { vibration: { ...word.vibration } }),
-        };
-      });
+        const codewords = library.codewords.map((word) => {
+          const error = contentError(word);
 
-      return [id, { ...library, codewords }];
-    }),
+          if (error || wordIds.has(word.id) || codes.has(word.code)) {
+            throw new Error(
+              error ??
+                'Codeword IDs and sequences must be unique within a library.',
+            );
+          }
+
+          wordIds.add(word.id);
+          codes.add(word.code);
+
+          return {
+            ...word,
+            ...(word.vibration === undefined
+              ? {}
+              : { vibration: { ...word.vibration } }),
+          };
+        });
+
+        return [id, { ...library, codewords }];
+      },
+    ),
   );
 
   return {
@@ -144,6 +183,7 @@ export function initialize(seed?: AppDataState): AppDataState {
       libraries,
       messages,
       preferences: { ...data.preferences },
+      history: { ...data.history },
     },
     device: { ...device },
   };
@@ -152,9 +192,16 @@ export function initialize(seed?: AppDataState): AppDataState {
 export type LibraryAction =
   | { type: 'library/select'; libraryId: string }
   | { type: 'codeword/delete'; libraryId: string; codewordId: string }
-  | { type: 'codeword/save'; libraryId: string; word: Codeword; creating: boolean };
+  | {
+      type: 'codeword/save';
+      libraryId: string;
+      word: Codeword;
+      creating: boolean;
+    };
 
-export type Action = LibraryAction
+export type Action =
+  | LibraryAction
+  | { type: 'preferences/update'; preferences: Preferences }
   | { type: 'message/add'; message: Message }
   | { type: 'profile/update'; profile: Profile }
   | { type: 'partner/link'; profile: Profile; conversationId: string }
@@ -163,24 +210,42 @@ export type Action = LibraryAction
   | { type: 'device/battery'; battery: number | null };
 
 /** Shared by durable writes and the React reducer. */
-export function reduceLibrarySettings(data: LibrarySettings, action: LibraryAction): LibrarySettings {
+export function reduceLibrarySettings(
+  data: LibrarySettings,
+  action: LibraryAction,
+): LibrarySettings {
   if (action.type === 'library/select') {
-    if (data.activeLibraryId === action.libraryId ||
-      !Object.prototype.hasOwnProperty.call(data.libraries, action.libraryId)) return data;
+    if (
+      data.activeLibraryId === action.libraryId ||
+      !Object.prototype.hasOwnProperty.call(data.libraries, action.libraryId)
+    )
+      return data;
     return { libraries: data.libraries, activeLibraryId: action.libraryId };
   }
 
   const library = data.libraries[action.libraryId];
   let codewords: readonly Codeword[];
   if (action.type === 'codeword/delete') {
-    if (action.libraryId !== 'clikd-codes' || !library ||
-      !library.codewords.some((word) => word.id === action.codewordId)) return data;
-    codewords = library.codewords.filter((word) => word.id !== action.codewordId);
+    if (
+      action.libraryId !== 'clikd-codes' ||
+      !library ||
+      !library.codewords.some((word) => word.id === action.codewordId)
+    )
+      return data;
+    codewords = library.codewords.filter(
+      (word) => word.id !== action.codewordId,
+    );
   } else {
     if (codewordSaveError(library, action.word, action.creating)) return data;
+    const previous = library.codewords.find(
+      (word) => word.id === action.word.id,
+    );
+    if (previous && sameCodeword(previous, action.word)) return data;
     codewords = action.creating
       ? [...library.codewords, action.word]
-      : library.codewords.map((word) => word.id === action.word.id ? action.word : word);
+      : library.codewords.map((word) =>
+          word.id === action.word.id ? action.word : word,
+        );
   }
   return {
     activeLibraryId: data.activeLibraryId,
@@ -191,16 +256,42 @@ export function reduceLibrarySettings(data: LibrarySettings, action: LibraryActi
   };
 }
 
+/** Ignore unchanged saves without depending on object identity or property order. */
+function sameCodeword(left: Codeword, right: Codeword): boolean {
+  return (
+    left.id === right.id &&
+    left.code === right.code &&
+    left.meaning === right.meaning &&
+    left.pattern === right.pattern &&
+    left.primaryColor === right.primaryColor &&
+    left.secondaryColor === right.secondaryColor &&
+    left.vibration?.enabled === right.vibration?.enabled &&
+    left.vibration?.strength === right.vibration?.strength &&
+    left.vibration?.durationScale === right.vibration?.durationScale
+  );
+}
+
 /** Pure transitions: no IO, clocks, random IDs, or mutation. */
 export function reducer(state: AppDataState, action: Action): AppDataState {
   const { data } = state;
 
   switch (action.type) {
+    case 'preferences/update':
+      return data.preferences.themeId === action.preferences.themeId &&
+        data.preferences.idleLedColor === action.preferences.idleLedColor &&
+        data.preferences.sentLedColor === action.preferences.sentLedColor
+        ? state
+        : {
+            ...state,
+            data: { ...data, preferences: { ...action.preferences } },
+          };
     case 'library/select':
     case 'codeword/delete':
     case 'codeword/save': {
       const settings = reduceLibrarySettings(data, action);
-      return settings === data ? state : { ...state, data: { ...data, ...settings } };
+      return settings === data
+        ? state
+        : { ...state, data: { ...data, ...settings } };
     }
     case 'message/add': {
       const messages = insertMessage(data.messages, action.message);

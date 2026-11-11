@@ -1,9 +1,10 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 
 import { DEFAULT_THEME as theme } from '@/constants/theme';
 import type { Message, Profile } from '@/state/types';
+import { useAppTheme } from '@/state/app_data';
 
 type Props = {
   message: Message;
@@ -29,16 +30,14 @@ function formatTime(createdAt: string): string {
 }
 
 function DefaultAvatar({ sent }: { sent: boolean }) {
-  const color = sent ? '#FFFFFF' : theme.avatarText;
+  const appearance = useAppTheme();
+  const color = sent ? '#FFFFFF' : appearance.accent;
 
   return (
     <Svg width={22} height={22} viewBox="0 0 24 24">
       <Circle cx={12} cy={8} r={4} fill={color} />
 
-      <Path
-        d="M4.5 21c0-4.3 3.2-7 7.5-7s7.5 2.7 7.5 7"
-        fill={color}
-      />
+      <Path d="M4.5 21c0-4.3 3.2-7 7.5-7s7.5 2.7 7.5 7" fill={color} />
     </Svg>
   );
 }
@@ -50,18 +49,26 @@ export const MessageRow = memo(function MessageRow({
   playing,
   onReplay,
 }: Props) {
+  const appearance = useAppTheme();
+  const [failedPhoto, setFailedPhoto] = useState<string | null>(null);
   const avatar = (
     <View
       accessible
       accessibilityRole="image"
-      accessibilityLabel={
-        `${profile?.name ?? 'Unknown sender'} profile picture`
-      }
-      style={[styles.avatar, sent && styles.sentAvatar]}
+      accessibilityLabel={`${profile?.name ?? 'Unknown sender'} profile picture`}
+      style={[
+        styles.avatar,
+        {
+          backgroundColor: sent
+            ? appearance.sentAvatar
+            : appearance.receivedAvatar,
+        },
+      ]}
     >
-      {profile?.photoUrl ? (
+      {profile?.photoUrl && profile.photoUrl !== failedPhoto ? (
         <Image
           source={{ uri: profile.photoUrl }}
+          onError={() => setFailedPhoto(profile.photoUrl)}
           style={styles.avatarImage}
         />
       ) : (
@@ -71,30 +78,27 @@ export const MessageRow = memo(function MessageRow({
   );
 
   return (
-    <View
-      style={[styles.row, sent && styles.sentRow]}
-    >
+    <View style={[styles.row, sent && styles.sentRow]}>
       {!sent && avatar}
 
       <View style={styles.content}>
         <View
           style={[
             styles.bubble,
-            sent
-              ? styles.sentBubble
-              : styles.receivedBubble,
+            !sent && styles.receivedBubble,
+            {
+              backgroundColor: sent
+                ? appearance.sentBubble
+                : appearance.receivedBubble,
+            },
           ]}
         >
           <View style={styles.messageText}>
-            <Text
-              style={[styles.code, sent && styles.white]}
-            >
+            <Text style={[styles.code, sent && styles.white]}>
               {message.code}
             </Text>
 
-            <Text
-              style={[styles.meaning, sent && styles.white]}
-            >
+            <Text style={[styles.meaning, sent && styles.white]}>
               {message.meaning}
             </Text>
           </View>
@@ -103,13 +107,12 @@ export const MessageRow = memo(function MessageRow({
             <Pressable
               accessibilityRole="button"
               accessibilityState={{ selected: playing }}
-              accessibilityLabel={
-                `${playing ? 'Stop' : 'Replay'} ${message.meaning}`
-              }
+              accessibilityLabel={`${playing ? 'Stop' : 'Replay'} ${message.meaning}`}
               hitSlop={8}
               onPress={() => onReplay(message)}
               style={({ pressed }) => [
                 styles.replay,
+                { backgroundColor: appearance.accent },
                 playing && styles.replaying,
                 pressed && styles.pressed,
               ]}
@@ -123,9 +126,7 @@ export const MessageRow = memo(function MessageRow({
           )}
         </View>
 
-        <Text
-          style={[styles.timestamp, sent && styles.right]}
-        >
+        <Text style={[styles.timestamp, sent && styles.right]}>
           {formatTime(message.createdAt)}
         </Text>
       </View>
@@ -161,13 +162,8 @@ const styles = StyleSheet.create({
   },
 
   receivedBubble: {
-    backgroundColor: theme.receivedBubble,
-    minWidth: 207,
+    minWidth: 0,
     justifyContent: 'space-between',
-  },
-
-  sentBubble: {
-    backgroundColor: theme.sentBubble,
   },
 
   messageText: {
@@ -215,10 +211,6 @@ const styles = StyleSheet.create({
     marginBottom: 17,
   },
 
-  sentAvatar: {
-    backgroundColor: theme.sentAvatar,
-  },
-
   avatarImage: {
     width: 30,
     height: 30,
@@ -235,7 +227,7 @@ const styles = StyleSheet.create({
   },
 
   replaying: {
-    backgroundColor: theme.accentPressed,
+    opacity: 0.8,
   },
 
   pressed: {

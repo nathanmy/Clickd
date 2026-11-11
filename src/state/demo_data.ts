@@ -2,7 +2,7 @@ import { LED_COLORS } from '@/features/keycap/codes';
 import { createDefaultState } from './defaults';
 import type { AppDataState, Message, Profile } from './types';
 
-/** Demo messages reuse Clikd meanings and sequences while demonstrating lighting variations. */
+/** Demo messages reuse Clickd meanings and sequences while demonstrating lighting variations. */
 export function createDemoState(): AppDataState {
   const state = createDefaultState();
 
@@ -15,7 +15,9 @@ export function createDemoState(): AppDataState {
   const conversationId = 'demo-conversation';
   const library = state.data.libraries['clikd-codes'];
 
-  function messageContent(codewordId: string): Pick<Message, 'code' | 'meaning'> {
+  function messageContent(
+    codewordId: string,
+  ): Pick<Message, 'code' | 'meaning'> {
     const word = library.codewords.find((entry) => entry.id === codewordId);
     if (!word) throw new Error(`Demo codeword not found: ${codewordId}`);
     return { code: word.code, meaning: word.meaning };
@@ -73,7 +75,7 @@ export function createDemoState(): AppDataState {
       id: 'demo-6',
       conversationId,
       senderId: state.data.currentUserId,
-      createdAt: '2026-11-09T08:05:00.000Z',
+      createdAt: '2026-11-10T08:05:00.000Z',
       ...messageContent('love'),
       pattern: 'circular',
       primaryColor: LED_COLORS.red,
@@ -82,7 +84,7 @@ export function createDemoState(): AppDataState {
       id: 'demo-7',
       conversationId,
       senderId: partner.id,
-      createdAt: '2026-11-09T08:06:00.000Z',
+      createdAt: '2026-11-10T08:06:00.000Z',
       ...messageContent('miss'),
       pattern: 'wave',
       primaryColor: LED_COLORS.purple,
@@ -91,7 +93,7 @@ export function createDemoState(): AppDataState {
       id: 'demo-8',
       conversationId,
       senderId: partner.id,
-      createdAt: '2026-11-09T08:07:00.000Z',
+      createdAt: '2026-11-10T08:07:00.000Z',
       ...messageContent('love'),
       pattern: 'wave',
       primaryColor: LED_COLORS.purple,
@@ -102,12 +104,17 @@ export function createDemoState(): AppDataState {
   return {
     data: {
       ...state.data,
+      history: { ...state.data.history, source: 'demo' },
       profiles: { ...state.data.profiles, [partner.id]: partner },
       partnerId: partner.id,
       activeConversationId: conversationId,
       messages: messages.map((message) => ({
         ...message,
-        library: { id: library.id, name: library.name, revision: library.revision },
+        library: {
+          id: library.id,
+          name: library.name,
+          revision: library.revision,
+        },
       })),
     },
     device: { connectionStatus: 'connected', battery: 78 },

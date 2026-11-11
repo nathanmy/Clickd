@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "Clikd",
-    "slug": "Clikd",
+    "name": "Clickd",
+    "slug": "Clickd",
     "version": "1.0.0",
     "orientation": "portrait",
-    "scheme": "clikd",
+    "scheme": "clickd",
     "userInterfaceStyle": "automatic",
     "android": {
       "predictiveBackGestureEnabled": false
@@ -14,6 +14,14 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Clickd to use a photo you choose for your profile.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
       [
         "expo-splash-screen",
         {
