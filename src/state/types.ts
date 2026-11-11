@@ -11,7 +11,6 @@ export type Profile = Readonly<{
 export type VibrationSettings = Readonly<{
   enabled: boolean;
   strength: number;
-  durationScale: number;
 }>;
 
 export type Codeword = Readonly<

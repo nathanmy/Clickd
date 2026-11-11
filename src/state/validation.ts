@@ -17,6 +17,7 @@ export const isId = (value: unknown): value is string =>
   typeof value === 'string' && value.length > 0 && value === value.trim();
 
 // Apply limits to new edits, preserving older library entries and message snapshots.
+export const MAX_CODEWORDS = 25;
 export const MAX_CODE_CLICKS = 16;
 export const MAX_CODEWORD_MEANING = 120;
 
@@ -62,10 +63,7 @@ function validVibration(value: VibrationSettings): boolean {
     typeof value.enabled === 'boolean' &&
     Number.isFinite(value.strength) &&
     value.strength >= 0 &&
-    value.strength <= 1 &&
-    Number.isFinite(value.durationScale) &&
-    value.durationScale >= 0.5 &&
-    value.durationScale <= 2
+    value.strength <= 1
   );
 }
 
@@ -101,7 +99,7 @@ export function contentError(value: Codeword): string | null {
   }
 
   if (value.vibration !== undefined && !validVibration(value.vibration)) {
-    return 'Vibration strength must be 0–1 and duration scale must be 0.5–2.';
+    return 'Vibration strength must be between 0 and 1.';
   }
 
   return null;
@@ -115,6 +113,12 @@ export function codewordSaveError(
   if (!library) return 'This library is no longer available.';
   if (library.id === 'morse-code')
     return 'Standard Morse code entries cannot be edited.';
+  if (
+    creating &&
+    library.id === 'clikd-codes' &&
+    library.codewords.length >= MAX_CODEWORDS
+  )
+    return `Clickd Codes can contain up to ${MAX_CODEWORDS} codewords. Delete one before adding another.`;
   const error = contentError(word);
   if (error) return error;
   if (word.code.length > MAX_CODE_CLICKS)

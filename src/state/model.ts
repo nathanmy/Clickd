@@ -190,6 +190,12 @@ export function initialize(seed?: AppDataState): AppDataState {
 }
 
 export type LibraryAction =
+  | {
+      type: 'codeword/move';
+      libraryId: string;
+      codewordId: string;
+      targetId: string;
+    }
   | { type: 'library/select'; libraryId: string }
   | { type: 'codeword/delete'; libraryId: string; codewordId: string }
   | {
@@ -225,7 +231,20 @@ export function reduceLibrarySettings(
 
   const library = data.libraries[action.libraryId];
   let codewords: readonly Codeword[];
-  if (action.type === 'codeword/delete') {
+  if (action.type === 'codeword/move') {
+    if (action.libraryId !== 'clikd-codes' || !library) return data;
+    const from = library.codewords.findIndex(
+      (word) => word.id === action.codewordId,
+    );
+    const to = library.codewords.findIndex(
+      (word) => word.id === action.targetId,
+    );
+    if (from < 0 || to < 0 || from === to) return data;
+    const reordered = [...library.codewords];
+    const [word] = reordered.splice(from, 1);
+    reordered.splice(to, 0, word);
+    codewords = reordered;
+  } else if (action.type === 'codeword/delete') {
     if (
       action.libraryId !== 'clikd-codes' ||
       !library ||
@@ -266,8 +285,7 @@ function sameCodeword(left: Codeword, right: Codeword): boolean {
     left.primaryColor === right.primaryColor &&
     left.secondaryColor === right.secondaryColor &&
     left.vibration?.enabled === right.vibration?.enabled &&
-    left.vibration?.strength === right.vibration?.strength &&
-    left.vibration?.durationScale === right.vibration?.durationScale
+    left.vibration?.strength === right.vibration?.strength
   );
 }
 
@@ -286,6 +304,7 @@ export function reducer(state: AppDataState, action: Action): AppDataState {
             data: { ...data, preferences: { ...action.preferences } },
           };
     case 'library/select':
+    case 'codeword/move':
     case 'codeword/delete':
     case 'codeword/save': {
       const settings = reduceLibrarySettings(data, action);

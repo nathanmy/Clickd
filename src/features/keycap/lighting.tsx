@@ -26,15 +26,16 @@ export type TimedFrame = LedFrame & {
 //  |           |
 //  6 --- 5 --- 4
 
+// Shared endpoints form one continuous rounded ring; indices still address eight LEDs.
 export const LED_PATHS = [
-  'M109 191 L226 81',
-  'M380 59 L696 59',
-  'M863 83 L970 192',
-  'M991 365 L991 623',
-  'M969 770 L865 888',
-  'M382 922 L698 922',
-  'M216 888 L108 769',
-  'M82 365 L82 623',
+  'M82 300 Q82 59 300 59',
+  'M300 59 L773 59',
+  'M773 59 Q991 59 991 300',
+  'M991 300 L991 681',
+  'M991 681 Q991 922 773 922',
+  'M773 922 L300 922',
+  'M300 922 Q82 922 82 681',
+  'M82 681 L82 300',
 ];
 
 const LED_IDS = [0, 1, 2, 3, 4, 5, 6, 7];
@@ -106,6 +107,7 @@ export function createPlaybackFrames(sequence: PlaybackSequence): {
     );
 
   let elapsed = 0;
+  let circularStep = 0;
 
   presses.forEach((symbol, index) => {
     const timing = useMeasuredTiming ? measured[index] : undefined;
@@ -128,7 +130,11 @@ export function createPlaybackFrames(sequence: PlaybackSequence): {
       for (let t = 0, step = 0; t < duration; t += stepMs, step++) {
         frames.push({
           at: elapsed + t,
-          active: groups[step % groups.length],
+          active:
+            groups[
+              (sequence.pattern === 'circular' ? circularStep++ : step) %
+                groups.length
+            ],
           colors: sample.colors,
         });
       }

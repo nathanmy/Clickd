@@ -7,7 +7,6 @@ export const DEFAULT_FEEDBACK = {
 export const DEFAULT_VIBRATION = {
   enabled: true,
   strength: 0.65,
-  durationScale: 1,
 } as const;
 export const MAX_PLAYBACK_PRESSES = 64;
 export const MAX_PLAYBACK_DURATION_MS = 60_000;
@@ -120,3 +119,13 @@ export const MORSE_CODE = [
   ['8', '———••'],
   ['9', '————•'],
 ] as const;
+
+/** Shared names for saved and preset LED colors. */
+export function getLedColorName(value: string): string {
+  const name = Object.entries(LED_COLORS).find(
+    ([, color]) => color.toLowerCase() === value.toLowerCase(),
+  )?.[0];
+  return name
+    ? name.charAt(0).toUpperCase() + name.slice(1)
+    : value.toUpperCase();
+}

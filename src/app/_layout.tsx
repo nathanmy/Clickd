@@ -1,3 +1,5 @@
+// @refresh reset
+// Reload the provider tree together when state modules change during development.
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {

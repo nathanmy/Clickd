@@ -416,12 +416,10 @@ function TopRow({
       <View style={styles.flex}>
         <Text style={styles.muted}>{label}</Text>
         {value ? (
-          <>
-            <View style={styles.codewordLine}>
-              <Text style={styles.code}>{value.message.code}</Text>
-              <Text style={styles.body}>{value.message.meaning}</Text>
-            </View>
-          </>
+          <View style={styles.codewordLine}>
+            <Text style={styles.code}>{value.message.code}</Text>
+            <Text style={styles.body}>{value.message.meaning}</Text>
+          </View>
         ) : (
           <Text style={styles.body}>
             {hasCoverage ? 'No recorded messages' : 'History unavailable'}
@@ -475,7 +473,7 @@ export default function StatsScreen() {
         clearTimeout(timer);
         subscription.remove();
       };
-    }, []),
+    }, [data.messages]),
   );
 
   const period = useMemo(

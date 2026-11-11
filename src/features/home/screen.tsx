@@ -1,8 +1,7 @@
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Animated,
-  AccessibilityInfo,
   AppState,
   FlatList,
   Platform,
@@ -17,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { DEFAULT_THEME as theme } from '@/constants/theme';
 import { Keycap } from '@/features/keycap/keycap';
 import { useReplay } from '@/features/keycap/replay';
+import { useReducedMotion } from '@/hooks/use_reduced_motion';
 import {
   useAppData,
   useAppTheme,
@@ -41,27 +41,7 @@ export function HomeScreen() {
   const { frame, playingId, replay, stop } = useReplay();
 
   const [heartOpacity] = useState(() => new Animated.Value(0.65));
-  const [reduceMotion, setReduceMotion] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-    const subscription = AccessibilityInfo.addEventListener(
-      'reduceMotionChanged',
-      (value) => {
-        active = false;
-        setReduceMotion(value);
-      },
-    );
-    AccessibilityInfo.isReduceMotionEnabled()
-      .then((value) => {
-        if (active) setReduceMotion(value);
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-      subscription.remove();
-    };
-  }, []);
+  const reduceMotion = useReducedMotion();
 
   // Preserve chronological order:
   // oldest messages at the top, newest messages below.
@@ -259,6 +239,9 @@ export function HomeScreen() {
             renderItem={renderMessage}
             extraData={playingId}
             onScroll={onScroll}
+            {...(Platform.OS !== 'web'
+              ? { maintainVisibleContentPosition: { minIndexForVisible: 0 } }
+              : {})}
             onContentSizeChange={onContentSizeChange}
             scrollEventThrottle={16}
             contentContainerStyle={styles.messageList}

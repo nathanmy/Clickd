@@ -47,7 +47,9 @@ type Props = {
   playing?: boolean;
   faded?: boolean;
   idleColor?: string;
-  size?: 'home' | 'preview';
+  size?: 'home' | 'preview' | 'thumbnail';
+  /** Theme cards can preview a palette without changing the saved appearance. */
+  appearance?: ReturnType<typeof useAppTheme>;
   ledOpacity?: Animated.Value;
 };
 
@@ -61,10 +63,33 @@ const KeycapShell = memo(function KeycapShell({
 }) {
   return (
     <>
-      <View
+      {/* Keep the platform and shadow in the artwork's coordinate space on every platform. */}
+      <Svg
         pointerEvents="none"
-        style={[styles.raisedBase, { backgroundColor: appearance.keycapCase }]}
-      />
+        aria-hidden={true}
+        focusable={false}
+        style={StyleSheet.absoluteFill}
+        width="100%"
+        height="100%"
+        viewBox="0 0 1084 1084"
+      >
+        <G transform="translate(0 16)">
+          <Path
+            d={CASE_PATH}
+            fill={appearance.keycapCase}
+            stroke={appearance.keycapCase}
+            strokeWidth={32}
+            opacity={0.12}
+          />
+          <Path
+            d={CASE_PATH}
+            fill={appearance.keycapCase}
+            stroke={appearance.keycapCase}
+            strokeWidth={12}
+            opacity={0.18}
+          />
+        </G>
+      </Svg>
       {/* Realistic keycap image */}
       <Image source={CLASSIC_IMAGE} resizeMode="contain" style={styles.image} />
 
@@ -95,7 +120,7 @@ const KeycapShell = memo(function KeycapShell({
                 d={d}
                 stroke="#000000"
                 strokeWidth={145}
-                strokeLinecap="round"
+                strokeLinecap="butt"
               />
             ))}
           </Mask>
@@ -112,14 +137,8 @@ const KeycapShell = memo(function KeycapShell({
             />
           </LinearGradient>
           <LinearGradient id={`${tintId}-face`} x1="0" y1="0" x2="0.8" y2="1">
-            <Stop
-              offset="0"
-              stopColor={appearance.keycapHighlight}
-            />
-            <Stop
-              offset="1"
-              stopColor={appearance.keycapBody}
-            />
+            <Stop offset="0" stopColor={appearance.keycapHighlight} />
+            <Stop offset="1" stopColor={appearance.keycapBody} />
           </LinearGradient>
         </Defs>
         <Path
@@ -163,7 +182,7 @@ const KeycapShell = memo(function KeycapShell({
               fill="none"
               stroke={appearance.keycapCase}
               strokeWidth={75}
-              strokeLinecap="round"
+              strokeLinecap="butt"
             />
           ))}
         </G>
@@ -178,9 +197,11 @@ export const Keycap = memo(function Keycap({
   faded = false,
   idleColor,
   size = 'home',
+  appearance: appearanceOverride,
   ledOpacity,
 }: Props) {
-  const appearance = useAppTheme();
+  const selectedAppearance = useAppTheme();
+  const appearance = appearanceOverride ?? selectedAppearance;
   const { preferences } = useAppData();
   const tintId = `keycap-${useId().replace(/:/g, '')}`;
   return (
@@ -188,6 +209,7 @@ export const Keycap = memo(function Keycap({
       style={[
         styles.container,
         size === 'preview' && styles.preview,
+        size === 'thumbnail' && styles.thumbnail,
         faded && styles.faded,
       ]}
     >
@@ -224,7 +246,7 @@ export const Keycap = memo(function Keycap({
                     }
                     strokeWidth={layer.strokeWidth}
                     strokeOpacity={layer.strokeOpacity}
-                    strokeLinecap="round"
+                    strokeLinecap="butt"
                   />
                 ))}
               </G>
@@ -241,28 +263,24 @@ const styles = StyleSheet.create({
     width: '42%',
     maxWidth: 164,
     aspectRatio: 1,
+    flexShrink: 0,
   },
 
+  // Artwork must not contribute an intrinsic height inside a scrolling editor.
   image: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
     width: '100%',
     height: '100%',
-  },
-
-  raisedBase: {
-    position: 'absolute',
-    top: '5%',
-    bottom: '3%',
-    left: '4%',
-    right: '4%',
-    borderRadius: '24%',
-    boxShadow:
-      '0px 10px 18px rgba(0, 0, 0, 0.28), 0px 3px 5px rgba(0, 0, 0, 0.22)',
   },
 
   preview: {
     width: '100%',
     maxWidth: 240,
   },
+
+  thumbnail: { width: 48, height: 48 },
 
   faded: {
     opacity: 0.82,

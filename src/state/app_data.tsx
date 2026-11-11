@@ -36,6 +36,11 @@ import type {
 } from './types';
 
 type AppActions = Readonly<{
+  moveCodeword: (
+    libraryId: string,
+    codewordId: string,
+    targetId: string,
+  ) => Promise<ActionResult>;
   deleteCodeword: (
     libraryId: string,
     codewordId: string,
@@ -122,6 +127,20 @@ export function AppDataProvider({ children, initialState }: Props) {
 
   const actions = useMemo<AppActions>(
     () => ({
+      moveCodeword(libraryId, codewordId, targetId) {
+        return commitChange(({ libraries }) => {
+          const library = libraries[libraryId];
+          if (libraryId !== 'clikd-codes' || !library)
+            return fail('Only Clickd codewords can be reordered.');
+          if (
+            ![codewordId, targetId].every((id) =>
+              library.codewords.some((word) => word.id === id),
+            )
+          )
+            return fail('This codeword is no longer available.');
+          return { type: 'codeword/move', libraryId, codewordId, targetId };
+        });
+      },
       deleteCodeword(libraryId, codewordId) {
         return commitChange(({ libraries }) => {
           if (libraryId !== 'clikd-codes')

@@ -9,6 +9,7 @@ import type { Message } from '@/state/types';
 type MessageSnapshot = Readonly<{
   conversationId: string | null;
   ids: ReadonlySet<string>;
+  newestAt: number | null;
 }>;
 
 const NEAR_BOTTOM_PX = 80;
@@ -32,6 +33,7 @@ export function useMessageScroll(
   const previous = useRef<MessageSnapshot>({
     conversationId: null,
     ids: new Set(),
+    newestAt: null,
   });
 
   const [newMessageCount, setNewMessageCount] = useState(0);
@@ -64,16 +66,21 @@ export function useMessageScroll(
   useLayoutEffect(() => {
     const conversationChanged =
       previous.current.conversationId !== activeConversationId;
-    const added = conversationMessages.filter(
-      (message) => !previous.current.ids.has(message.id),
+    const newestAt = previous.current.newestAt;
+    const arrivals = conversationMessages.filter(
+      (message) =>
+        !previous.current.ids.has(message.id) &&
+        (newestAt === null || Date.parse(message.createdAt) >= newestAt),
     );
     const followNewMessages =
-      added.length > 0 &&
+      arrivals.length > 0 &&
       (nearBottom.current ||
-        added.some((message) => message.senderId === currentUserId));
+        arrivals.some((message) => message.senderId === currentUserId));
+    const latest = conversationMessages.at(-1);
     previous.current = {
       conversationId: activeConversationId,
       ids: new Set(conversationMessages.map((message) => message.id)),
+      newestAt: latest ? Date.parse(latest.createdAt) : null,
     };
 
     if (conversationChanged || followNewMessages) {
@@ -83,8 +90,8 @@ export function useMessageScroll(
         messages: conversationMessages,
       };
       setNewMessageCount(0);
-    } else if (added.length > 0) {
-      setNewMessageCount((count) => count + added.length);
+    } else if (arrivals.length > 0) {
+      setNewMessageCount((count) => count + arrivals.length);
     } else if (pendingScroll.current !== null) {
       // Changes to other conversations can recreate this list before measurement.
       pendingScroll.current.messages = conversationMessages;

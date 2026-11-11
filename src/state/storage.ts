@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { initialize } from './model';
+import { refreshDemoExamples } from './demo_data';
 import type {
   AppDataState,
   CodeLibrary,
@@ -17,7 +18,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 const locations = new Map<
   Source,
-  { indexKey: string; ids: ReadonlySet<string> }
+  { indexKey: string; messagePrefix: string; ids: ReadonlySet<string> }
 >();
 const messageKey = (index: string, id: string) =>
   `${index}/message/${encodeURIComponent(id)}`;
@@ -54,6 +55,17 @@ export async function loadAppState(seed: AppDataState): Promise<AppDataState> {
     );
   }
   const source = seed.data.history.source;
+  // Every supported format takes the same validation and demo-migration path.
+  async function finish(restored: AppDataState, migrate = false) {
+    const refreshed = refreshDemoExamples(restored, seed);
+    const updated = refreshed === restored ? restored : initialize(refreshed);
+    if (migrate || updated !== restored) {
+      await readStorage(() =>
+        saveAppData(updated.data, migrate ? undefined : restored.data),
+      );
+    }
+    return updated;
+  }
   try {
     const raw = await readStorage(() => AsyncStorage.getItem(rootKey(source)));
     if (raw !== null) {
@@ -72,39 +84,50 @@ export async function loadAppState(seed: AppDataState): Promise<AppDataState> {
       const index: unknown = indexRaw === null ? null : JSON.parse(indexRaw);
       if (
         !isRecord(index) ||
-        index.version !== 1 ||
+        (index.version !== 1 && index.version !== 2) ||
         !Array.isArray(index.ids) ||
         !index.ids.every((id: unknown) => typeof id === 'string') ||
         new Set(index.ids).size !== index.ids.length
       ) {
         throw new Error('Saved message index is invalid.');
       }
+      const messagePrefix =
+        index.version === 2 ? index.messagePrefix : indexKey;
+      if (
+        typeof messagePrefix !== 'string' ||
+        !messagePrefix.startsWith(`${rootKey(source)}/history/`)
+      )
+        throw new Error('Saved message location is invalid.');
       const ids = index.ids as string[];
       const entries = ids.length
         ? await readStorage(() =>
-            AsyncStorage.multiGet(ids.map((id) => messageKey(indexKey, id))),
+            AsyncStorage.multiGet(
+              ids.map((id) => messageKey(messagePrefix, id)),
+            ),
           )
         : [];
       const values = new Map(entries);
       const messages = ids.map((id) => {
-        const body = values.get(messageKey(indexKey, id));
+        const body = values.get(messageKey(messagePrefix, id));
         const message: unknown = body == null ? null : JSON.parse(body);
         if (!isRecord(message) || message.id !== id)
           throw new Error(`Saved message ${id} is missing or invalid.`);
         return message;
       });
       const restored = parseSavedState(
-        JSON.stringify({ version: 1, data: { ...envelope.data, messages } }),
+        { version: 1, data: { ...envelope.data, messages } },
         seed,
       );
-      locations.set(source, { indexKey, ids: new Set(ids) });
-      return restored;
+      locations.set(source, { indexKey, messagePrefix, ids: new Set(ids) });
+      return await finish(restored);
     }
     locations.delete(source);
     const old = await readStorage(() => AsyncStorage.getItem(oldKey(source)));
-    if (old !== null) return parseSavedState(old, seed);
+    if (old !== null)
+      return await finish(parseSavedState(JSON.parse(old), seed), true);
     const legacy = await readStorage(() => AsyncStorage.getItem(LEGACY_KEY));
-    if (legacy === null) return initialize(seed);
+    // Persist coverage immediately, even if the user makes no edits this session.
+    if (legacy === null) return await finish(initialize(seed), true);
     const saved: unknown = JSON.parse(legacy);
     if (
       !isRecord(saved) ||
@@ -116,17 +139,30 @@ export async function loadAppState(seed: AppDataState): Promise<AppDataState> {
     ) {
       throw new Error('Saved library settings are invalid.');
     }
-    return initialize({
-      ...seed,
-      data: {
-        ...seed.data,
-        libraries: {
-          ...seed.data.libraries,
-          'clikd-codes': { ...(saved.library as CodeLibrary), name: 'Clickd Codes' },
+    return await finish(
+      initialize({
+        ...seed,
+        data: {
+          ...seed.data,
+          messages:
+            source === 'demo'
+              ? seed.data.messages.map((message) => ({
+                  ...message,
+                  id: message.id.replace('demo-v3-', 'demo-v2-'),
+                }))
+              : seed.data.messages,
+          libraries: {
+            ...seed.data.libraries,
+            'clikd-codes': {
+              ...(saved.library as CodeLibrary),
+              name: 'Clickd Codes',
+            },
+          },
+          activeLibraryId: saved.activeLibraryId,
         },
-        activeLibraryId: saved.activeLibraryId,
-      },
-    });
+      }),
+      true,
+    );
   } catch (error) {
     if (error instanceof AppLoadError) throw error;
     throw new AppLoadError(
@@ -141,56 +177,79 @@ function metadata(data: SharedAppData) {
   return settings;
 }
 
-/** Write bodies before the index, so interrupted writes cannot expose missing messages. */
+/** Prepare immutable history first, then commit settings and history with one root write. */
 export async function saveAppData(
   data: SharedAppData,
   previous?: SharedAppData,
 ): Promise<void> {
   const source = data.history.source;
   const current = locations.get(source);
-  const indexKey =
-    current?.indexKey ??
-    `${rootKey(source)}/history/${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const historyChanged =
     !current || !previous || previous.messages !== data.messages;
-  if (historyChanged) {
-    const additions = data.messages.filter(
-      (message) => !current?.ids.has(message.id),
-    );
-    if (additions.length) {
-      await AsyncStorage.multiSet(
-        additions.map((message: Message): [string, string] => [
-          messageKey(indexKey, message.id),
-          JSON.stringify(message),
-        ]),
-      );
-    }
-    await AsyncStorage.setItem(
-      indexKey,
-      JSON.stringify({
-        version: 1,
-        ids: data.messages.map((message) => message.id),
-      }),
-    );
-  }
   const settings = metadata(data);
-  if (
+  const settingsChanged =
     !current ||
     !previous ||
-    JSON.stringify(settings) !== JSON.stringify(metadata(previous))
-  ) {
-    // This is the initial/migration commit point; old v1 data remains untouched.
+    JSON.stringify(settings) !== JSON.stringify(metadata(previous));
+  if (!historyChanged && !settingsChanged) return;
+
+  const indexKey = historyChanged
+    ? `${rootKey(source)}/history/${Date.now()}-${Math.random().toString(36).slice(2)}`
+    : current!.indexKey;
+  // Message bodies stay immutable and shared between successive index generations.
+  const messagePrefix = current?.messagePrefix ?? indexKey;
+  try {
+    if (historyChanged) {
+      const additions = data.messages.filter(
+        (message) => !current?.ids.has(message.id),
+      );
+      if (additions.length) {
+        await AsyncStorage.multiSet(
+          additions.map((message: Message): [string, string] => [
+            messageKey(messagePrefix, message.id),
+            JSON.stringify(message),
+          ]),
+        );
+      }
+      await AsyncStorage.setItem(
+        indexKey,
+        JSON.stringify({
+          version: 2,
+          messagePrefix,
+          ids: data.messages.map((message) => message.id),
+        }),
+      );
+    }
+    // The existing root and index remain usable until this single commit succeeds.
     await AsyncStorage.setItem(
       rootKey(source),
       JSON.stringify({ version: 2, indexKey, data: settings }),
     );
+  } catch (error) {
+    if (historyChanged) {
+      try {
+        await AsyncStorage.removeItem(indexKey);
+      } catch {
+        /* An unused index can be cleaned up later. */
+      }
+    }
+    throw error;
   }
   locations.set(source, {
     indexKey,
+    messagePrefix,
     ids: historyChanged
       ? new Set(data.messages.map((message) => message.id))
       : current!.ids,
   });
+  if (historyChanged && current && current.indexKey !== indexKey) {
+    // Delete only the old index record; bodies under its prefix are still shared.
+    try {
+      await AsyncStorage.removeItem(current.indexKey);
+    } catch {
+      /* Cleanup must not invalidate a committed save. */
+    }
+  }
 }
 
 /** Preserve every active format before resetting; backup/write failures leave old data usable. */
@@ -223,8 +282,7 @@ export async function recoverAppState(
 }
 
 /** Validate stored snapshots and fill settings introduced by newer app versions. */
-function parseSavedState(raw: string, seed: AppDataState): AppDataState {
-  const saved: unknown = JSON.parse(raw);
+function parseSavedState(saved: unknown, seed: AppDataState): AppDataState {
   if (
     !isRecord(saved) ||
     saved.version !== 1 ||
@@ -244,8 +302,8 @@ function parseSavedState(raw: string, seed: AppDataState): AppDataState {
     preferences: isRecord(saved.data.preferences)
       ? {
           themeId:
-            saved.data.preferences.homeBackground ??
             saved.data.preferences.themeId ??
+            saved.data.preferences.homeBackground ??
             'classic',
           idleLedColor:
             saved.data.preferences.idleLedColor ??

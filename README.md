@@ -65,7 +65,10 @@ src/
   constants/theme.ts     Application colors and spacing
   features/
     home/                Home screen, message rows, scroll behavior
+    library/             Codeword editor, drag reordering, shared library styles
     keycap/              Sequence definitions, LED palette, visualization, playback
+    profile/             Profile/photo and feedback editors with shared styling
+  hooks/                   Shared accessibility preference hooks
   state/
     app_data.tsx         React contexts, public actions, consumer hooks
     types.ts             Application data contracts
@@ -89,14 +92,18 @@ Set it to `false` to test a disconnected device with no partner or messages.
 Clickd codewords, library selection, message snapshots, profiles, conversation
 information, history coverage, and the selected color theme are restored using AsyncStorage.
 Version 2 stores settings separately from individually saved message bodies and a
-message index. Settings changes do not rewrite history; new messages write their
-body before committing the index. Migration retains the earlier save until the
+message index. Settings changes do not rewrite history. History updates prepare
+new bodies and a new immutable index, sharing existing bodies by a saved prefix.
+A single root write commits the index pointer and settings together; a failed
+commit leaves the earlier snapshot active. Older index formats still load, and
+obsolete index records are cleaned up after a successful commit. Migration retains the earlier save until the
 new format commits successfully. Recovery also backs up the individual records.
 Durable actions return a promise and publish updates only after saving succeeds;
 callers must await their result. Errors leave drafts open for retry. Morse entries
 remain fixed, and device telemetry is never restored as a real connection.
 Development demo data uses a separate storage key from normal app data. Existing
-library-only saves migrate automatically. Recovery backs up unreadable data before
+library-only saves migrate automatically. All supported save formats run the
+same final migration before being committed to the current format. Recovery backs up unreadable data before
 replacing it with defaults, and never resets data if the backup fails.
 Settings updates accept only changed fields and merge inside the save queue.
 Startup distinguishes development-data errors, unavailable storage, and invalid
@@ -121,13 +128,22 @@ Home. Physical vibration and previews on the Clickd device require hardware inte
 Playback stops when the app moves into the background. Saving an unchanged
 codeword leaves its library revision unchanged and skips the storage write.
 Closing a changed codeword draft asks before discarding it.
+Clickd Codes allows up to 25 codewords. Adding is disabled at capacity; editing,
+deleting, and reordering remain available. Existing larger saves are preserved,
+and demo migrations never add codewords beyond the limit.
+The reorder icon in the CODEWORD / MEANING header enters Organize mode; the
+checkmark finishes it. Rows follow the drag, neighboring rows move aside, and
+holding near the list edges scrolls automatically. Keyboard and screen-reader
+actions move entries up or down. Drag handles are 44 by 44; reduced motion
+disables the neighboring-row springs. Reordered entries save after release.
 Codeword edits allow up to 16 clicks and 120 characters of meaning; historical
 messages and older library entries remain readable without truncation.
 Duplicate sequences show an inline error while editing and disable saving until
 resolved. The current codeword is excluded from its own duplicate check.
 Playback is bounded to 64 presses. Recorded timings beyond 60 seconds total or
 10 seconds per press use standard click timings for preview; the original saved
-recording is retained. Longer sequences are not replayed.
+recording is retained. Longer sequences are not replayed. Circular lighting
+continues its rotation between presses rather than restarting each time.
 Stats' sent/received count cards also select the corresponding chart metric.
 
 Profile supports a saved name, photo, and color theme. Theme backgrounds apply to
@@ -137,15 +153,15 @@ bubbles, avatars, replay buttons, and the keycap body and shell.
 Library controls and Stats selectors, chart bars, and borders use the same theme
 palette; content cards stay white and text stays dark for readability. Codeword lighting
 and feedback colors remain independent of appearance. Native photos are copied
-to document storage; browser photos use persistent image data. The pencil and
-camera controls open a draft editor; name and photo changes save together, and
-Cancel asks before discarding changes. Privacy and Notifications remain visible as
-unavailable settings. Device feedback has editable colors: Ready to send controls
+to document storage; browser photos use persistent image data. The profile pencil opens a draft editor; name and photo changes save together, and
+Cancel asks before discarding changes. Profile shows identity, Appearance, and Device feedback; unused Privacy and
+Notifications placeholders are hidden. Appearance uses an equal two-column grid
+with a miniature keycap and message bubbles rendered in each option's own palette. Device feedback has editable colors: Ready to send controls
 the idle glow on all keycaps, and Message sent stores the confirmation color for
 future device integration. Defaults are idle white and green, respectively.
 The sent-color editor pulses only its preview LEDs, pausing in the background and
 respecting reduced-motion preferences. Keycap artwork is memoized independently
-of playback frames. Home places the battery beneath Your device, and message
+of playback frames. Home places the battery beneath the left keycap, and message
 avatars fall back to their placeholder if a photo cannot load.
 Selected photos are
 cropped square and resized to at most 512 pixels, then compressed as JPEG.
@@ -157,3 +173,20 @@ adding these modules. Bluetooth pairing, accounts, and device feedback remain fu
 The repository includes the keycap illustration and tab icons. Custom launcher
 icons, favicon, and splash artwork are not supplied; Expo defaults are used until
 real assets are added to `app.json`.
+
+Generated demo messages receive only the explicit, one-time fixture corrections
+in `demo_data.ts`. Normal message snapshots, and corrected demo snapshots after
+later library edits, retain their original meaning, symbols, colors, and feedback.
+
+Vibration settings include enabled/disabled and strength. The editor no longer
+offers a duration multiplier; recorded press timing and lighting playback are
+unchanged. Older saved messages remain readable with their original snapshots.
+Keycap artwork and its platform shadow share a square SVG coordinate system in
+Home and editors.
+
+Home distinguishes older history from new arrivals: backfilled messages do not
+increase the new-message indicator or force a scroll to the latest message.
+Native lists also retain the visible message when history is prepended. Home,
+reordering, and feedback previews share the system reduced-motion preference.
+Fresh demo fixtures are generated directly in the current format; historical
+fixture corrections run only while restoring older saved examples.
