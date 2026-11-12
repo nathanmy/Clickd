@@ -65,6 +65,7 @@ src/
   constants/theme.ts     Application colors and spacing
   features/
     home/                Home screen, message rows, scroll behavior
+    device_simulator/    Input interpretation and recording lifecycle for the simulator
     library/             Codeword editor, drag reordering, shared library styles
     keycap/              Sequence definitions, LED palette, visualization, playback
     profile/             Profile/photo and feedback editors with shared styling
@@ -190,3 +191,65 @@ Native lists also retain the visible message when history is prepended. Home,
 reordering, and feedback previews share the system reduced-motion preference.
 Fresh demo fixtures are generated directly in the current format; historical
 fixture corrections run only while restoring older saved examples.
+
+## Device Simulator
+
+In development builds, open Profile, then Developer tools > Device simulator.
+It opens as a separate full-screen route above the existing tabs. Release builds
+hide the entry and redirect direct simulator navigation back to Profile unless
+the build explicitly enables the shared demo preview.
+Press the keycap itself, then release to record each press. The cap depresses
+inside its fixed platform while held. The screen keeps only the sequence, match,
+and essential action controls visible. Initial
+simulator settings classify holds of at least 400 ms as dashes. Clickd input
+automatically receives the codeword after a 900 ms pause.
+Morse sends one word at a time: pauses under 900 ms continue the same letter,
+pauses from 900 ms to under 2,000 ms separate letters, and a 2,000 ms pause
+automatically receives the word. Each pause is measured from the last
+release; a new press cancels the receive timer. These are development settings,
+not final firmware rules.
+The simulator resolves recordings against the active library, previews a matched
+codeword, and automatically adds a received test message to the current conversation.
+Replay it from Home to see its recorded glow. Test messages stay in memory for
+the current app session and disappear on reload or restart. Older saved simulator
+messages are removed at startup; ordinary message history is preserved.
+Messages retain the captured library metadata, meaning, feedback, and press
+recording. Unknown sequences cannot be received. A linked partner and conversation
+are required; development demo data supplies both. Morse words support up to
+64 presses and 60 seconds of recorded input, retaining pauses for replay. Invalid
+Morse characters block receiving and show an error. Bluetooth is future work.
+Incomplete recording stops when leaving the screen or backgrounding the app.
+Live dot/dash feedback and a pause progress bar show the current input stage;
+How to use expands the timing rules. A completed message stays visible and can
+be previewed until the next recording or Clear. Preview is disabled during input
+so a previous recording cannot be mistaken for the current one. Late timers do
+not merge words across a receive timeout. Morse letter boundaries are shown with
+slashes in simulator input, message bubbles, and top-codeword statistics without
+changing the original saved symbols or replay timings.
+
+## Share a Web Demo
+
+Publish a separate demo preview with Expo Hosting. In PowerShell, from the project folder:
+
+```powershell
+npx.cmd eas-cli@latest login
+$env:EXPO_PUBLIC_DEMO_PREVIEW = "true"
+npx.cmd expo export --platform web
+npx.cmd eas-cli@latest deploy
+Remove-Item Env:EXPO_PUBLIC_DEMO_PREVIEW
+```
+
+On the first deployment, follow the prompts to link your Expo project and choose
+a preview subdomain. Share the preview URL printed after deployment.
+The opt-in export includes demo messages and the device simulator without requiring
+a development server. Each browser keeps its own local data; coworkers do not
+exchange messages. The demo flag is public build configuration, not a secret.
+Normal exports without the flag keep the simulator and seeded demo data disabled.
+Re-export before deploying changes. Keep the preview flag enabled for that export,
+then remove it from your shell afterward.
+
+The simulator displays its selected library above the keycap. Interrupted gestures
+cancel the draft rather than becoming clicks. Recording and timer management live
+in `features/device_simulator/use_device_simulator.ts`; visible instructions use
+the same timing constants as interpretation. Fresh demo histories use recent
+timestamps, while previously saved message timestamps are preserved.

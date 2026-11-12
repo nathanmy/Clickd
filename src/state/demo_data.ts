@@ -3,7 +3,7 @@ import { MAX_CODEWORDS } from './validation';
 import type { AppDataState, Message, Profile } from './types';
 
 /** Snapshot each default codeword, including its exact lighting and vibration. */
-export function createDemoState(): AppDataState {
+export function createDemoState(now = new Date()): AppDataState {
   const state = createDefaultState();
   const partner: Profile = {
     id: 'demo-partner',
@@ -18,7 +18,7 @@ export function createDemoState(): AppDataState {
     conversationId,
     senderId: partner.id,
     createdAt: new Date(
-      Date.UTC(2026, 10, 9 + Math.floor(index / 3), 8, index),
+      now.getTime() - (library.codewords.length - index) * 60_000,
     ).toISOString(),
     library: {
       id: library.id,
@@ -115,7 +115,7 @@ function refreshOldDemoMessages(
   };
 }
 
-/** Add the two sent examples once, using the saved love codeword's feedback. */
+/** Add sent examples after every two received examples, preserving saved snapshots. */
 function addDemoReplies(state: AppDataState): AppDataState {
   if (state.data.history.source !== 'demo') return state;
   const love = state.data.libraries['clikd-codes'].codewords.find(
@@ -128,24 +128,27 @@ function addDemoReplies(state: AppDataState): AppDataState {
         message.conversationId === 'demo-conversation' &&
         message.senderId !== state.data.currentUserId &&
         (message.id.startsWith('demo-v2-') ||
-          message.id.startsWith('demo-v3-')),
+          message.id.startsWith('demo-v3-') ||
+          message.id.startsWith('demo-v4-')),
     )
     .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
   const library = state.data.libraries['clikd-codes'];
   const additions: Message[] = [];
-  for (const [index, after] of [1, 3].entries()) {
+  for (const [index, after] of [1, 3, 5].entries()) {
     const id = `demo-v3-sent-love-${index + 1}`;
     if (
       !received[after] ||
       state.data.messages.some(
         (message) =>
           message.id === id ||
-          message.id === id.replace('demo-v3-', 'demo-v2-'),
+          message.id === id.replace('demo-v3-', 'demo-v2-') ||
+          message.id === id.replace('demo-v3-', 'demo-v4-'),
       )
     )
       continue;
     additions.push({
       ...love,
+      pattern: 'solid',
       id,
       conversationId: 'demo-conversation',
       senderId: state.data.currentUserId,
@@ -174,8 +177,10 @@ export function refreshDemoExamples(
   state: AppDataState,
   seed: AppDataState,
 ): AppDataState {
-  return refreshDemoSnapshotsOnce(
-    addDemoReplies(refreshOldDemoMessages(state, seed)),
+  return refreshDemoLovePattern(
+    refreshDemoSnapshotsOnce(
+      addDemoReplies(refreshOldDemoMessages(state, seed)),
+    ),
   );
 }
 
@@ -219,6 +224,27 @@ function refreshDemoSnapshotsOnce(state: AppDataState): AppDataState {
         name: library.name,
         revision: library.revision,
       },
+    };
+  });
+  return changed ? { ...state, data: { ...state.data, messages } } : state;
+}
+
+/** Correct only generated love examples; new IDs keep immutable stored bodies intact. */
+function refreshDemoLovePattern(state: AppDataState): AppDataState {
+  if (state.data.history.source !== 'demo') return state;
+  let changed = false;
+  const messages = state.data.messages.map((message) => {
+    if (
+      message.conversationId !== 'demo-conversation' ||
+      !/^demo-v3-(?:love|sent-love-[123])$/.test(message.id) ||
+      message.pattern === 'solid'
+    )
+      return message;
+    changed = true;
+    return {
+      ...message,
+      id: message.id.replace('demo-v3-', 'demo-v4-'),
+      pattern: 'solid' as const,
     };
   });
   return changed ? { ...state, data: { ...state.data, messages } } : state;

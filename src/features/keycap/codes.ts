@@ -129,3 +129,16 @@ export function getLedColorName(value: string): string {
     ? name.charAt(0).toUpperCase() + name.slice(1)
     : value.toUpperCase();
 }
+
+/** Add readable letter boundaries only when the saved meaning matches the symbols. */
+export function formatMorseCode(code: string, meaning: string): string {
+  const letters = [...meaning.toUpperCase()].map(
+    (character) => MORSE_CODE.find(([letter]) => letter === character)?.[1],
+  );
+  if (
+    letters.some((letter) => letter === undefined) ||
+    letters.join('') !== code
+  )
+    return code;
+  return letters.join(' / ');
+}

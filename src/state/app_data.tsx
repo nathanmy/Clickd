@@ -7,6 +7,7 @@ import {
   useRef,
   type PropsWithChildren,
 } from 'react';
+import { SIMULATOR_ENABLED } from './defaults';
 import { APP_THEMES } from '@/constants/theme';
 
 import { initialize, reducer, type Action } from './model';
@@ -52,6 +53,8 @@ type AppActions = Readonly<{
     codewordId?: string,
   ) => Promise<ActionResult>;
   addMessage: (message: Message) => Promise<ActionResult>;
+  /** Simulator incoming messages; never written to storage. */
+  receiveSimulatedMessage: (message: Message) => ActionResult;
 
   /** Upsert metadata; a message can arrive before its sender's profile. */
   updateProfile: (profile: Profile) => Promise<ActionResult>;
@@ -207,6 +210,29 @@ export function AppDataProvider({ children, initialState }: Props) {
 
         const snapshot = copyMessage(message);
         return commitChange(() => ({ type: 'message/add', message: snapshot }));
+      },
+
+      receiveSimulatedMessage(message) {
+        if (!SIMULATOR_ENABLED)
+          return fail(
+            'The simulator is only available in development or demo previews.',
+          );
+        const error = messageError(message);
+        if (error) return fail(error);
+        const data = savedData.current;
+        if (
+          !message.id.startsWith('simulator-') ||
+          !data.partnerId ||
+          message.senderId !== data.partnerId ||
+          message.conversationId !== data.activeConversationId
+        )
+          return fail(
+            'This test message needs the current partner and conversation.',
+          );
+
+        // Publish to this session without changing the durable snapshot used by saves.
+        dispatch({ type: 'message/add', message: copyMessage(message) });
+        return OK;
       },
 
       async updateProfile(profile) {

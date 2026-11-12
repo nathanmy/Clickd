@@ -2,6 +2,7 @@ import { memo, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 
+import { formatMorseCode } from '@/features/keycap/codes';
 import { DEFAULT_THEME as theme } from '@/constants/theme';
 import type { Message, Profile } from '@/state/types';
 import { useAppTheme } from '@/state/app_data';
@@ -95,7 +96,9 @@ export const MessageRow = memo(function MessageRow({
         >
           <View style={styles.messageText}>
             <Text style={[styles.code, sent && styles.white]}>
-              {message.code}
+              {message.library.id === 'morse-code'
+                ? formatMorseCode(message.code, message.meaning)
+                : message.code}
             </Text>
 
             <Text style={[styles.meaning, sent && styles.white]}>

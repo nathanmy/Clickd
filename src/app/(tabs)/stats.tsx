@@ -23,6 +23,7 @@ import Svg, {
   Text as SvgText,
 } from 'react-native-svg';
 
+import { formatMorseCode } from '@/features/keycap/codes';
 import { DEFAULT_THEME as theme } from '@/constants/theme';
 import { useAppData, useAppTheme, useThemeBackground } from '@/state/app_data';
 import {
@@ -417,7 +418,11 @@ function TopRow({
         <Text style={styles.muted}>{label}</Text>
         {value ? (
           <View style={styles.codewordLine}>
-            <Text style={styles.code}>{value.message.code}</Text>
+            <Text style={styles.code}>
+              {value.message.library.id === 'morse-code'
+                ? formatMorseCode(value.message.code, value.message.meaning)
+                : value.message.code}
+            </Text>
             <Text style={styles.body}>{value.message.meaning}</Text>
           </View>
         ) : (
@@ -878,7 +883,12 @@ const createStyles = (appearance: ReturnType<typeof useAppTheme>) =>
       gap: 10,
       marginTop: 4,
     },
-    code: { fontSize: 17, color: theme.codeText, letterSpacing: 2 },
+    code: {
+      fontSize: 17,
+      color: theme.codeText,
+      letterSpacing: 2,
+      flexShrink: 1,
+    },
     backdrop: {
       flex: 1,
       backgroundColor: 'rgba(0,0,0,0.4)',

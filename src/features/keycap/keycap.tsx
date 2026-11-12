@@ -46,6 +46,7 @@ type Props = {
   frame?: LedFrame;
   playing?: boolean;
   faded?: boolean;
+  pressed?: boolean;
   idleColor?: string;
   size?: 'home' | 'preview' | 'thumbnail';
   /** Theme cards can preview a palette without changing the saved appearance. */
@@ -57,9 +58,11 @@ type Props = {
 const KeycapShell = memo(function KeycapShell({
   appearance,
   tintId,
+  pressed,
 }: {
   appearance: ReturnType<typeof useAppTheme>;
   tintId: string;
+  pressed: boolean;
 }) {
   return (
     <>
@@ -137,7 +140,12 @@ const KeycapShell = memo(function KeycapShell({
             />
           </LinearGradient>
           <LinearGradient id={`${tintId}-face`} x1="0" y1="0" x2="0.8" y2="1">
-            <Stop offset="0" stopColor={appearance.keycapHighlight} />
+            <Stop
+              offset="0"
+              stopColor={
+                pressed ? appearance.keycapBody : appearance.keycapHighlight
+              }
+            />
             <Stop offset="1" stopColor={appearance.keycapBody} />
           </LinearGradient>
         </Defs>
@@ -154,26 +162,36 @@ const KeycapShell = memo(function KeycapShell({
           strokeWidth={10}
           strokeOpacity={0.85}
         />
-        <Path d={BODY_PATH} fill={`url(#${tintId})`} />
-        <Path d={FACE_PATH} fill={`url(#${tintId}-face)`} />
-        <Path
-          d={FACE_PATH}
-          fill="none"
-          stroke="#FFFFFF"
-          strokeWidth={6}
-          strokeOpacity={0.4}
-        />
-        <SvgText
-          x="542"
-          y="440"
-          textAnchor="middle"
-          fill="#000000"
-          fontSize={116}
-          fontWeight="800"
-          fontStyle="italic"
+        {pressed && <Path d={BODY_PATH} fill={appearance.keycapSide} />}
+        {/* Depress only the cap; the LED ring and platform stay fixed. */}
+        <G
+          transform={
+            pressed
+              ? 'translate(542 470) scale(0.96) translate(-542 -430)'
+              : undefined
+          }
         >
-          Clickd
-        </SvgText>
+          <Path d={BODY_PATH} fill={`url(#${tintId})`} />
+          <Path d={FACE_PATH} fill={`url(#${tintId}-face)`} />
+          <Path
+            d={FACE_PATH}
+            fill="none"
+            stroke="#FFFFFF"
+            strokeWidth={6}
+            strokeOpacity={0.4}
+          />
+          <SvgText
+            x="542"
+            y="440"
+            textAnchor="middle"
+            fill="#000000"
+            fontSize={116}
+            fontWeight="800"
+            fontStyle="italic"
+          >
+            Clickd
+          </SvgText>
+        </G>
         <G>
           {LED_PATHS.map((d, id) => (
             <Path
@@ -195,6 +213,7 @@ export const Keycap = memo(function Keycap({
   frame,
   playing = false,
   faded = false,
+  pressed = false,
   idleColor,
   size = 'home',
   appearance: appearanceOverride,
@@ -213,7 +232,7 @@ export const Keycap = memo(function Keycap({
         faded && styles.faded,
       ]}
     >
-      <KeycapShell appearance={appearance} tintId={tintId} />
+      <KeycapShell appearance={appearance} tintId={tintId} pressed={pressed} />
 
       {/* Dynamic LED overlay */}
       <Animated.View

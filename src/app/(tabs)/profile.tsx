@@ -1,6 +1,8 @@
+import { router } from 'expo-router';
 import { useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { SIMULATOR_ENABLED } from '@/state/defaults';
 import { APP_THEMES } from '@/constants/theme';
 import {
   useAppActions,
@@ -197,6 +199,27 @@ export default function ProfileScreen() {
             </View>
           ))}
         </View>
+        {SIMULATOR_ENABLED && (
+          <>
+            <Text accessibilityRole="header" style={styles.heading}>
+              Developer tools
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Open Device simulator"
+              onPress={() => router.push('/device-simulator')}
+              style={({ pressed }) => [
+                styles.developerButton,
+                {
+                  backgroundColor: APP_THEMES[preferences.themeId].sentBubble,
+                },
+                pressed && styles.developerPressed,
+              ]}
+            >
+              <Text style={styles.developerLabel}>Try device simulator</Text>
+            </Pressable>
+          </>
+        )}
       </ScrollView>
       {editing && (
         <ProfileEditor

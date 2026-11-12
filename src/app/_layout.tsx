@@ -1,6 +1,7 @@
 // @refresh reset
 // Reload the provider tree together when state modules change during development.
 import { Stack } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -11,7 +12,7 @@ import {
 } from 'react-native';
 
 import { AppDataProvider } from '@/state/app_data';
-import { createDefaultState } from '@/state/defaults';
+import { createDefaultState, DEMO_PREVIEW_ENABLED } from '@/state/defaults';
 import { createDemoState } from '@/state/demo_data';
 import { AppLoadError, loadAppState, recoverAppState } from '@/state/storage';
 import type { AppDataState } from '@/state/types';
@@ -21,7 +22,9 @@ import { DEFAULT_THEME as theme } from '@/constants/theme';
 const ENABLE_DEMO_DATA = true;
 
 const createInitialState = () =>
-  __DEV__ && ENABLE_DEMO_DATA ? createDemoState() : createDefaultState();
+  (__DEV__ && ENABLE_DEMO_DATA) || DEMO_PREVIEW_ENABLED
+    ? createDemoState()
+    : createDefaultState();
 
 export default function RootLayout() {
   const [restored, setRestored] = useState<AppDataState | null>(null);
@@ -139,8 +142,13 @@ export default function RootLayout() {
 
   return (
     <AppDataProvider initialState={restored}>
+      <StatusBar style="dark" />
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="device-simulator"
+          options={{ headerShown: false, presentation: 'card' }}
+        />
       </Stack>
     </AppDataProvider>
   );

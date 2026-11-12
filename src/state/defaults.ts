@@ -5,6 +5,11 @@ import {
 } from '@/features/keycap/codes';
 import type { AppDataState, CodeLibrary, Profile } from './types';
 
+// Opt in only when exporting a shareable demo; ordinary releases stay unchanged.
+export const DEMO_PREVIEW_ENABLED =
+  process.env.EXPO_PUBLIC_DEMO_PREVIEW === 'true';
+export const SIMULATOR_ENABLED = __DEV__ || DEMO_PREVIEW_ENABLED;
+
 /** Fresh objects each time; these are product defaults, not demo content. */
 export function createDefaultState(): AppDataState {
   const you: Profile = {

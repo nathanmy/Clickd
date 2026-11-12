@@ -28,6 +28,21 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   initialText: { fontSize: 36, fontWeight: '600', color: theme.text },
+  developerButton: {
+    minHeight: 56,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  developerLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  developerPressed: { opacity: 0.8, transform: [{ scale: 0.98 }] },
   iconButton: {
     width: 44,
     height: 44,

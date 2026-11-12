@@ -57,7 +57,15 @@ export async function loadAppState(seed: AppDataState): Promise<AppDataState> {
   const source = seed.data.history.source;
   // Every supported format takes the same validation and demo-migration path.
   async function finish(restored: AppDataState, migrate = false) {
-    const refreshed = refreshDemoExamples(restored, seed);
+    // Earlier simulator builds saved test messages. They are session-only now.
+    const messages = restored.data.messages.filter(
+      (message) => !message.id.startsWith('simulator-'),
+    );
+    const cleaned =
+      messages.length === restored.data.messages.length
+        ? restored
+        : { ...restored, data: { ...restored.data, messages } };
+    const refreshed = refreshDemoExamples(cleaned, seed);
     const updated = refreshed === restored ? restored : initialize(refreshed);
     if (migrate || updated !== restored) {
       await readStorage(() =>
